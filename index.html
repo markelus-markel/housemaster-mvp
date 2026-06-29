@@ -371,7 +371,7 @@ padding-bottom: 24px;
 <!-- PAGES -->
 
 <!-- EMERGENCY PAGE -->
-<div class="page active" id="page-emrg">
+<div class="page" id="page-emrg">
 <div class="search-wrap">
 <span class="search-icon">🔍</span>
 <input class="search-input" id="search-emrg" placeholder="Искать аварию..." oninput="filterEmrg(this.value)">
@@ -403,9 +403,9 @@ padding-bottom: 24px;
 </div>
 
 <!-- CHECKLIST PAGE -->
-<div class="page" id="page-checks">
+<div class="page active" id="page-checks">
 <div class="section" style="padding-bottom:0">
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="domain-tabs"></div>
+<div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px" id="domain-tabs"></div>
 </div>
 <div class="section">
 <div class="section-label" id="check-domain-label">Выберите домен</div>
@@ -462,14 +462,14 @@ padding-bottom: 24px;
 
 <!-- BOTTOM NAV -->
 <nav class="bottomnav">
-<button class="nav-btn emrg-btn active" id="nav-emrg" onclick="showPage('emrg')">
-<span class="icon">🚨</span>Аварии
+<button class="nav-btn active" id="nav-checks" onclick="showPage('checks')">
+<span class="icon">☑</span>Чек-лист
 </button>
 <button class="nav-btn" id="nav-symptoms" onclick="showPage('symptoms')">
 <span class="icon">🔍</span>Симптомы
 </button>
-<button class="nav-btn" id="nav-checks" onclick="showPage('checks')">
-<span class="icon">☑</span>Чек-лист
+<button class="nav-btn emrg-btn" id="nav-emrg" onclick="showPage('emrg')">
+<span class="icon">🚨</span>Аварии
 </button>
 <button class="nav-btn" id="nav-ref" onclick="showPage('ref')">
 <span class="icon">📖</span>Справка
@@ -663,7 +663,7 @@ steps:['Safety check перед выходом на кровлю','Сначал�
 
 const CHECKLIST_DOMAINS = [
 {
-key:'roof', label:'ROOF', color:'var(--roof)',
+key:'roof', label:'ROOF', labelRu:'Кровля', color:'var(--roof)',
 items:[
 {text:'Воронки: проходимость, нет засора/льда', v2:'ROOF-L2-004'},
 {text:'Примыкания к парапетам: герметик цел', v2:'ROOF-L2-007'},
@@ -674,7 +674,7 @@ items:[
 ]
 },
 {
-key:'base', label:'BASE', color:'var(--base)',
+key:'base', label:'BASE', labelRu:'Подвал', color:'var(--base)',
 items:[
 {text:'Вода на полу: нет стоячей воды', v2:'BASE-L2-001'},
 {text:'Запах при входе: нет газа, нет резкой сырости', v2:'BASE-L3-002'},
@@ -685,7 +685,7 @@ items:[
 ]
 },
 {
-key:'heat', label:'HEAT', color:'var(--heat)',
+key:'heat', label:'HEAT', labelRu:'Отопление', color:'var(--heat)',
 items:[
 {text:'Давление на манометрах ИТП: в норме', v2:'HEAT-L2-003'},
 {text:'Температура на ИТП: соответствует сезону', v2:'HEAT-L2-001'},
@@ -696,7 +696,7 @@ items:[
 ]
 },
 {
-key:'watr', label:'WATR', color:'var(--watr)',
+key:'watr', label:'WATR', labelRu:'Водопровод', color:'var(--watr)',
 items:[
 {text:'Счётчик ХВС: показания сняты', v2:'WATR-L1-001'},
 {text:'Пломба счётчика: цела', v2:'WATR-L1-001'},
@@ -707,7 +707,7 @@ items:[
 ]
 },
 {
-key:'elec', label:'ELEC', color:'var(--elec)',
+key:'elec', label:'ELEC', labelRu:'Электрика', color:'var(--elec)',
 items:[
 {text:'ВРУ: нет запаха гари, нет следов копоти', v2:'ELEC-L3-001'},
 {text:'Этажные щитки: нет запаха, нормальная t°', v2:'ELEC-L2-002'},
@@ -910,14 +910,22 @@ document.getElementById('modal-overlay').classList.add('open');
 
 function renderDomainTabs(){
 const el = document.getElementById('domain-tabs');
-el.innerHTML = CHECKLIST_DOMAINS.map(d=>`
-<button onclick="selectDomain('${d.key}')" id="tab-${d.key}"
-style="padding:7px 14px;border-radius:20px;border:none;font-size:13px;font-weight:700;cursor:pointer;
-background:${d.key===currentDomain?d.color:'#E0E0E0'};
-color:${d.key===currentDomain?'white':'var(--muted)'}">
-${d.label}
-</button>
-`).join('');
+el.innerHTML = CHECKLIST_DOMAINS.map(d=>{
+  const total = d.items.length;
+  const done = d.items.filter((_,i)=>checkState[d.key+'_'+i]).length;
+  const active = d.key===currentDomain;
+  const pct = total ? Math.round(done/total*100) : 0;
+  return `<button onclick="selectDomain('${d.key}')" id="tab-${d.key}"
+    style="flex:1;min-width:0;padding:10px 6px 8px;border-radius:12px;border:2px solid ${active?d.color:'#E8E8E8'};
+    background:${active?d.color+'18':'white'};cursor:pointer;text-align:center;transition:all 0.15s;">
+    <div style="font-size:15px;font-weight:800;color:${active?d.color:'var(--navy)'};">${d.labelRu}</div>
+    <div style="font-size:10px;color:var(--muted);margin-top:1px;letter-spacing:0.03em">(${d.label})</div>
+    <div style="margin-top:6px;height:4px;border-radius:3px;background:#E8E8E8;overflow:hidden;">
+      <div style="height:100%;width:${pct}%;background:${d.color};border-radius:3px;transition:width 0.3s;"></div>
+    </div>
+    <div style="font-size:10px;color:${active?d.color:'var(--muted)'};margin-top:3px;font-weight:700;">${done}/${total}</div>
+  </button>`;
+}).join('');
 }
 
 function selectDomain(key){
@@ -929,7 +937,7 @@ renderChecklist();
 function renderChecklist(){
 const dom = CHECKLIST_DOMAINS.find(d=>d.key===currentDomain);
 if(!dom) return;
-document.getElementById('check-domain-label').textContent = `Чек-лист: ${dom.label}`;
+document.getElementById('check-domain-label').textContent = `Чек-лист: ${dom.labelRu}`;
 const el = document.getElementById('checklist-body');
 el.innerHTML = dom.items.map((item,i)=>{
 const k = `${currentDomain}_${i}`;
@@ -1158,6 +1166,28 @@ function showShareModal(report){
   `;
   document.getElementById('modal-overlay').classList.add('open');
 }
+
+
+// ═══════════════════════════════════════════════════════
+// SWIPE — горизонтальный свайп между доменами
+// ═══════════════════════════════════════════════════════
+(function(){
+  let sx=0, sy=0;
+  const el = document.getElementById('page-checks');
+  el.addEventListener('touchstart', e=>{
+    sx = e.touches[0].clientX;
+    sy = e.touches[0].clientY;
+  }, {passive:true});
+  el.addEventListener('touchend', e=>{
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    if(Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)*1.5) return;
+    const keys = CHECKLIST_DOMAINS.map(d=>d.key);
+    const idx = keys.indexOf(currentDomain);
+    if(dx < 0 && idx < keys.length-1) selectDomain(keys[idx+1]);
+    if(dx > 0 && idx > 0) selectDomain(keys[idx-1]);
+  }, {passive:true});
+})();
 
 // ═══════════════════════════════════════════════════════
 // BUILD: v1.3.0 — share module + camera
