@@ -1617,7 +1617,7 @@ function buildGovAct(reason, chairman, actNum){
     const isOk = !!checkState[k];
     const photo = photoState[k]||null;
     const src = DOMAIN_SOURCE[dom.key]||{tom:'—',razdel:'—'};
-    const sevCode = item.v2||'';
+    const sevCode = item.code||'';
     const sevLvl = sevCode.includes('-L3-')?'L3':sevCode.includes('-L2-')?'L2':sevCode.includes('-L1-')?'L1':'—';
     const rec = isOk?'—':
       sevCode.includes('-L3-')?'Немедленное устранение. SLA ≤ 1–2 ч.':
@@ -1626,7 +1626,7 @@ function buildGovAct(reason, chairman, actNum){
     return {
       domKey: dom.key, domRu: dom.labelRu, domLabel: dom.label,
       domColor: dom.color,
-      code: item.v2||'—',
+      code: item.code||'—',
       source: src.tom+' / '+src.razdel,
       name: item.text,
       status: isOk?'Соответствует':'Замечание',
