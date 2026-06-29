@@ -2044,7 +2044,7 @@ function exportCSV(){
     ].map(escape).join(','));
   });
   const bom='﻿';
-  const blob=new Blob([bom+csvRows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const blob=new Blob([bom+csvRows.join('\\n')],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   a.download='${actNum}.csv';
