@@ -1990,14 +1990,14 @@ function renderTable(){
       +'<td style="font-size:8pt;font-weight:700;color:#1a1a2e">'+r.code+'</td>'
       +'<td style="font-size:8pt;color:#555">'+r.source+'</td>'
       +'<td style="font-size:8.5pt">'+r.name+'</td>'
-      +'<td style="text-align:center"><select class="status-select" onchange="setField('+i+',\'status\',this.value);renderTable()">'+statusOpts+'</select></td>'
+      +'<td style="text-align:center"><select class="status-select" onchange="setField('+i+',\\'status\\',this.value);renderTable()">'+statusOpts+'</select></td>'
       +'<td style="text-align:center"><span class="sev-badge" style="background:'+sColor+';font-size:7pt">'+r.sevLvl+'</span></td>'
-      +'<td contenteditable="true" onblur="setField('+i+',\'comment\',this.innerText)" style="color:'+( r.status==='Соответствует'?'#888':'#C62828')+'">'+escHtml(r.comment||'—')+'</td>'
+      +'<td contenteditable="true" onblur="setField('+i+',\\'comment\\',this.innerText)" style="color:'+( r.status==='Соответствует'?'#888':'#C62828')+'">'+escHtml(r.comment||'—')+'</td>'
       +'<td style="text-align:center">'+photoCell+'</td>'
       +'<td style="font-size:8pt;color:#555">'+escHtml(r.rec||'—')+'</td>'
-      +'<td contenteditable="true" onblur="setField('+i+',\'deadline\',this.innerText)" style="color:#555">'+escHtml(r.deadline||'—')+'</td>'
-      +'<td contenteditable="true" onblur="setField('+i+',\'responsible\',this.innerText)" style="color:#555">'+escHtml(r.responsible||'—')+'</td>'
-      +'<td><select class="status-select" onchange="setField('+i+',\'execStatus\',this.value)">'+execOpts+'</select></td>'
+      +'<td contenteditable="true" onblur="setField('+i+',\\'deadline\\',this.innerText)" style="color:#555">'+escHtml(r.deadline||'—')+'</td>'
+      +'<td contenteditable="true" onblur="setField('+i+',\\'responsible\\',this.innerText)" style="color:#555">'+escHtml(r.responsible||'—')+'</td>'
+      +'<td><select class="status-select" onchange="setField('+i+',\\'execStatus\\',this.value)">'+execOpts+'</select></td>'
       +'<td style="text-align:center"><button class="del-row-btn" onclick="deleteRow('+i+')" title="Удалить строку">×</button></td>'
       +'</tr>';
   }).join('');
@@ -2076,7 +2076,7 @@ function showShareFallback(text){
     +'<a href="https://wa.me/?text='+enc+'" target="_blank" style="display:block;padding:12px;background:#25D366;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:8px;text-align:center;font-size:14px">💬 WhatsApp</a>'
     +'<a href="https://t.me/share/url?text='+enc+'" target="_blank" style="display:block;padding:12px;background:#2AABEE;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:8px;text-align:center;font-size:14px">✈️ Telegram</a>'
     +'<a href="mailto:?subject=${actNum}&body='+enc+'" style="display:block;padding:12px;background:#1a1a2e;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:14px;text-align:center;font-size:14px">✉️ Email</a>'
-    +'<button onclick="this.closest(\'div[style]\').remove()" style="width:100%;padding:12px;border:2px solid #eee;border-radius:10px;background:white;font-size:14px;cursor:pointer">Закрыть</button></div>';
+    +'<button onclick="this.closest(\\'div[style]\\').remove()" style="width:100%;padding:12px;border:2px solid #eee;border-radius:10px;background:white;font-size:14px;cursor:pointer">Закрыть</button></div>';
   document.body.appendChild(el);
   el.addEventListener('click',e=>{if(e.target===el)el.remove()});
 }
