@@ -531,6 +531,40 @@ padding-bottom: 24px;
 </div>
 </div>
 
+<!-- SETTINGS PAGE -->
+<div class="page" id="page-settings">
+<div class="section">
+<div class="section-label">Профиль хаузмастера</div>
+<div class="card" style="padding:16px">
+  <div class="fin-field">
+    <label>Ф.И.О. хаузмастера</label>
+    <input id="prof-inspector" type="text" placeholder="Иванов Иван Иванович" oninput="saveProfile()">
+  </div>
+  <div class="fin-field">
+    <label>Тип заказчика</label>
+    <select id="prof-contractor-type" onchange="saveProfile()">
+      <option value="">— Выберите —</option>
+      <option value="ОСИ">ОСИ (объединение собственников)</option>
+      <option value="ПТ">ПТ (простое товарищество)</option>
+      <option value="УК">УК (управляющая компания)</option>
+      <option value="Жилищная инспекция">Жилищная инспекция</option>
+    </select>
+  </div>
+  <div class="fin-field">
+    <label>Название заказчика</label>
+    <input id="prof-contractor-name" type="text" placeholder="ОСИ &laquo;Абай 12&raquo;" oninput="saveProfile()">
+  </div>
+  <div class="fin-field" style="margin-bottom:0">
+    <label>Председатель / Куратор</label>
+    <input id="prof-contact" type="text" placeholder="Петров Пётр Петрович" oninput="saveProfile()">
+  </div>
+</div>
+</div>
+<div style="padding:8px 16px 16px;font-size:12px;color:var(--muted);text-align:center">
+  Данные сохраняются автоматически и остаются после перезагрузки
+</div>
+</div>
+
 <!-- BOTTOM NAV -->
 <nav class="bottomnav">
 <button class="nav-btn active" id="nav-checks" onclick="showPage('checks')">
@@ -548,6 +582,9 @@ renderArchive()">
 </button>
 <button class="nav-btn" id="nav-ref" onclick="showPage('ref')">
 <span class="icon">📖</span>Справка
+</button>
+<button class="nav-btn" id="nav-settings" onclick="showPage('settings')">
+<span class="icon">⚙️</span>Профиль
 </button>
 </nav>
 
@@ -864,6 +901,7 @@ let checkState = {};
 let photoState = {};
 let sessionMeta = JSON.parse(sessionStorage.getItem("hm_meta")||'{"object":"","inspector":"","chairman":""}');
 let actCounter = parseInt(localStorage.getItem("hm_act_counter")||"0");
+let profile = JSON.parse(localStorage.getItem('hm_profile')||'{"inspector":"","contractorType":"","contractorName":"","contact":""}');
 let currentDomain = 'roof';
 
 // ═══════════════════════════════════════════════════════
@@ -1307,6 +1345,32 @@ function showShareModal(report){
 // ═══════════════════════════════════════════════════════
 function saveSessionMeta(){ sessionStorage.setItem('hm_meta', JSON.stringify(sessionMeta)); }
 
+function saveProfile(){
+  profile.inspector       = document.getElementById('prof-inspector')?.value||'';
+  profile.contractorType  = document.getElementById('prof-contractor-type')?.value||'';
+  profile.contractorName  = document.getElementById('prof-contractor-name')?.value||'';
+  profile.contact         = document.getElementById('prof-contact')?.value||'';
+  localStorage.setItem('hm_profile', JSON.stringify(profile));
+  // Sync to sessionMeta if currently empty
+  if(!sessionMeta.inspector && profile.inspector){
+    sessionMeta.inspector = profile.inspector;
+    saveSessionMeta();
+    renderSessionBar();
+  }
+  if(!sessionMeta.chairman && profile.contact){
+    sessionMeta.chairman = profile.contact;
+    saveSessionMeta();
+  }
+}
+
+function loadProfileUI(){
+  const g = id => document.getElementById(id);
+  if(g('prof-inspector'))       g('prof-inspector').value       = profile.inspector||'';
+  if(g('prof-contractor-type')) g('prof-contractor-type').value = profile.contractorType||'';
+  if(g('prof-contractor-name')) g('prof-contractor-name').value = profile.contractorName||'';
+  if(g('prof-contact'))         g('prof-contact').value         = profile.contact||'';
+}
+
 function renderSessionBar(){
   const wrap = document.getElementById('session-bar-wrap');
   if(!wrap) return;
@@ -1603,6 +1667,13 @@ function buildGovAct(reason, chairman, actNum){
   const dateLong = now.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
   const dateShort = now.toLocaleDateString('ru-RU');
 
+  // Профиль заказчика
+  const cType = profile.contractorType||'';
+  const cName = profile.contractorName||'';
+  const contractorStr = [cType, cName].filter(Boolean).join(' — ')||'—';
+  const chairmanLabel = cType==='ОСИ'?'Председатель ОСИ':cType==='ПТ'?'Уполномоченный ПТ':cType==='УК'?'Контакт УК':cType==='Жилищная инспекция'?'Куратор инспекции':'Председатель ОСИ';
+  const chairmanVal = chairman||profile.contact||'—';
+
   // Определить обследованные домены (хотя бы один пункт проверен или есть фото)
   const inspected = d.domains.filter(dom=>
     dom.done > 0 || dom.items.some((_,i)=>photoState[dom.key+'_'+i])
@@ -1845,7 +1916,8 @@ body{font-family:'Times New Roman',Times,serif;font-size:11pt;color:#000;backgro
   <tr><td>Адрес МКД:</td><td>${d.object}</td></tr>
   <tr><td>Дата обследования:</td><td>${dateLong} (${dateShort})</td></tr>
   <tr><td>Исполнитель обследования:</td><td>${d.inspector}</td></tr>
-  <tr><td>Председатель ОСИ:</td><td>${chairman||'—'}</td></tr>
+  <tr><td>Заказчик:</td><td>${contractorStr}</td></tr>
+  <tr><td>${chairmanLabel}:</td><td>${chairmanVal}</td></tr>
   <tr><td>Основание обследования:</td><td>${reason}</td></tr>
   <tr><td>Номер акта:</td><td>${actNum}</td></tr>
   <tr><td>Стандарт документа:</td><td>Housemaster Standard Act v1.0</td></tr>
@@ -2424,6 +2496,10 @@ if('serviceWorker' in navigator){
 // ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
+// Sync profile → sessionMeta on cold start
+if(!sessionMeta.inspector && profile.inspector){ sessionMeta.inspector = profile.inspector; saveSessionMeta(); }
+if(!sessionMeta.chairman  && profile.contact)  { sessionMeta.chairman  = profile.contact;   saveSessionMeta(); }
+loadProfileUI();
 renderContacts();
 renderSops();
 renderSymptoms();
