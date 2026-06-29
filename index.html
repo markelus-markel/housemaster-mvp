@@ -531,8 +531,28 @@ padding-bottom: 24px;
 </div>
 </div>
 
+<!-- OBJECTS PAGE -->
+<div class="page" id="page-objects">
+<div class="section" style="padding-bottom:6px">
+<div class="section-label">Мои объекты</div>
+<div id="objects-list"></div>
+</div>
+<div style="padding:0 16px 16px">
+<button onclick="showAddObjectModal()" style="width:100%;padding:14px;border:none;border-radius:10px;background:var(--navy);color:white;font-size:15px;font-weight:800;cursor:pointer">
+  + Добавить объект
+</button>
+</div>
+</div>
+
 <!-- SETTINGS PAGE -->
 <div class="page" id="page-settings">
+<div class="section" style="padding-bottom:4px">
+<div class="section-label">Объекты</div>
+<div class="card" onclick="showPage('objects')" style="padding:14px 16px;margin-bottom:0;display:flex;justify-content:space-between;align-items:center;cursor:pointer">
+  <span style="font-size:15px">🏢 Мои объекты</span>
+  <span style="color:var(--muted);font-size:20px">›</span>
+</div>
+</div>
 <div class="section">
 <div class="section-label">Профиль хаузмастера</div>
 <div class="card" style="padding:16px">
@@ -902,6 +922,8 @@ let photoState = {};
 let sessionMeta = JSON.parse(sessionStorage.getItem("hm_meta")||'{"object":"","inspector":"","chairman":""}');
 let actCounter = parseInt(localStorage.getItem("hm_act_counter")||"0");
 let profile = JSON.parse(localStorage.getItem('hm_profile')||'{"inspector":"","contractorType":"","contractorName":"","contact":""}');
+let objects    = JSON.parse(localStorage.getItem('hm_objects')||'[]');
+let activeObjId = localStorage.getItem('hm_active_obj')||null;
 let currentDomain = 'roof';
 
 // ═══════════════════════════════════════════════════════
@@ -1371,15 +1393,143 @@ function loadProfileUI(){
   if(g('prof-contact'))         g('prof-contact').value         = profile.contact||'';
 }
 
+// ═══════════════════════════════════════════════════════
+// OBJECTS REGISTRY
+// ═══════════════════════════════════════════════════════
+function saveObjects(){ localStorage.setItem('hm_objects', JSON.stringify(objects)); }
+function getActiveObject(){ return objects.find(o=>o.id===activeObjId)||null; }
+
+function selectObject(id){
+  activeObjId = id;
+  localStorage.setItem('hm_active_obj', id);
+  const obj = getActiveObject();
+  if(obj){
+    sessionMeta.object   = obj.address;
+    sessionMeta.chairman = obj.contact||profile.contact||'';
+    saveSessionMeta();
+  }
+  checkState = {};
+  photoState = {};
+  renderSessionBar();
+  renderDomainTabs();
+  renderChecklist();
+  showPage('checks');
+}
+
+function renderObjectsList(){
+  const el = document.getElementById('objects-list');
+  if(!el) return;
+  if(!objects.length){
+    el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--muted)">Нет объектов.<br>Нажмите «+ Добавить объект».</div>';
+    return;
+  }
+  el.innerHTML = objects.map(obj=>{
+    const isActive = obj.id===activeObjId;
+    const lastDate = obj.lastInspection ? new Date(obj.lastInspection).toLocaleDateString('ru-RU') : 'Нет обходов';
+    const meta = [obj.buildingType, obj.year].filter(Boolean).join(', ')||'Тип не указан';
+    const selectBtn = isActive
+      ? '<span style="font-size:11px;font-weight:800;color:var(--navy);padding:4px 8px;background:var(--light);border-radius:6px">Активный</span>'
+      : `<button onclick="selectObject('${obj.id}')" style="padding:6px 12px;border:2px solid var(--navy);border-radius:8px;background:white;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer">Выбрать</button>`;
+    return `<div class="card" style="padding:14px 16px;margin:8px 16px;border-left:4px solid ${isActive?'var(--navy)':'#E0E0E0'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:15px">${obj.address}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">${meta}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Последний обход: ${lastDate}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+          ${selectBtn}
+          <button onclick="confirmDeleteObject('${obj.id}')" style="padding:4px 8px;border:none;background:none;font-size:14px;cursor:pointer;color:var(--muted)">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showAddObjectModal(){
+  document.getElementById('modal-inner').innerHTML = `
+    <div class="modal-header">
+      <div class="modal-title">🏢 Новый объект</div>
+    </div>
+    <div class="modal-section">
+      <div class="fin-field">
+        <label>Адрес МКД</label>
+        <input id="obj-address" type="text" placeholder="ул. Абая 12, г. Алматы">
+      </div>
+      <div class="fin-field">
+        <label>Тип здания</label>
+        <select id="obj-building-type">
+          <option value="">— Не указан —</option>
+          <option>Панельный</option><option>Кирпичный</option>
+          <option>Монолит</option><option>Смешанный</option>
+        </select>
+      </div>
+      <div class="fin-field">
+        <label>Год постройки</label>
+        <input id="obj-year" type="number" placeholder="1985" min="1900" max="2030">
+      </div>
+      <div class="fin-field" style="margin-bottom:0">
+        <label>Председатель / Куратор объекта</label>
+        <input id="obj-contact" type="text" placeholder="Петров П.П." value="${profile.contact||''}">
+      </div>
+    </div>
+    <div style="padding:0 16px 16px">
+      <button onclick="saveNewObject()" style="width:100%;padding:14px;border:none;border-radius:10px;background:var(--navy);color:white;font-size:15px;font-weight:800;cursor:pointer">
+        Добавить объект
+      </button>
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function saveNewObject(){
+  const address = document.getElementById('obj-address')?.value.trim()||'';
+  if(!address){ alert('Укажите адрес МКД'); return; }
+  const obj = {
+    id: 'obj_'+Date.now(),
+    address,
+    buildingType: document.getElementById('obj-building-type')?.value||'',
+    year: parseInt(document.getElementById('obj-year')?.value)||null,
+    contact: document.getElementById('obj-contact')?.value.trim()||'',
+    contractorType: profile.contractorType||'',
+    contractorName: profile.contractorName||'',
+    lastInspection: null
+  };
+  objects.push(obj);
+  saveObjects();
+  closeModalBtn();
+  renderObjectsList();
+  selectObject(obj.id);
+}
+
+function confirmDeleteObject(id){
+  const obj = objects.find(o=>o.id===id);
+  if(!obj) return;
+  if(!confirm('Удалить объект «'+obj.address+'»?\nДанные не восстановить.')) return;
+  objects = objects.filter(o=>o.id!==id);
+  saveObjects();
+  if(activeObjId===id){
+    activeObjId = objects.length ? objects[0].id : null;
+    if(activeObjId) localStorage.setItem('hm_active_obj', activeObjId);
+    else localStorage.removeItem('hm_active_obj');
+    const next = getActiveObject();
+    sessionMeta.object   = next ? next.address : '';
+    sessionMeta.chairman = next ? (next.contact||profile.contact||'') : (profile.contact||'');
+    saveSessionMeta();
+    checkState={}; photoState={};
+    renderSessionBar(); renderDomainTabs(); renderChecklist();
+  }
+  renderObjectsList();
+}
+
 function renderSessionBar(){
   const wrap = document.getElementById('session-bar-wrap');
   if(!wrap) return;
   const filled = sessionMeta.object || sessionMeta.inspector;
-  wrap.innerHTML = `<div class="session-bar${filled?'':' empty'}" onclick="showSessionSetup()">
+  wrap.innerHTML = `<div class="session-bar${filled?'':' empty'}" onclick="showPage('objects')">
     <span class="session-bar-icon">${filled?'🏢':'⚠️'}</span>
     <div class="session-bar-text">
       <div class="session-bar-main">${filled?(sessionMeta.object||'Объект не указан'):'Укажите объект осмотра'}</div>
-      <div class="session-bar-sub">${filled?(sessionMeta.inspector?'👤 '+sessionMeta.inspector:'Инспектор не указан'):'Нажмите чтобы заполнить'}</div>
+      <div class="session-bar-sub">${filled?(sessionMeta.inspector?'👤 '+sessionMeta.inspector:'Инспектор не указан'):'Нажмите чтобы выбрать объект'}</div>
     </div>
     <span class="session-bar-edit">✏️</span>
   </div>`;
@@ -1650,6 +1800,11 @@ function finalizeReport(){
   const reportHTML = buildGovAct(reason, chairman, actNum);
   const entry = buildArchiveEntry(actNum, reason, chairman);
   saveToArchive(entry);
+  // Обновить дату последнего обхода активного объекта
+  if(activeObjId){
+    const obj = objects.find(o=>o.id===activeObjId);
+    if(obj){ obj.lastInspection = new Date().toISOString(); saveObjects(); renderObjectsList(); }
+  }
   closeModalBtn();
   const blob = new Blob([reportHTML], {type:'text/html;charset=utf-8'});
   const url = URL.createObjectURL(blob);
@@ -2499,7 +2654,13 @@ if('serviceWorker' in navigator){
 // Sync profile → sessionMeta on cold start
 if(!sessionMeta.inspector && profile.inspector){ sessionMeta.inspector = profile.inspector; saveSessionMeta(); }
 if(!sessionMeta.chairman  && profile.contact)  { sessionMeta.chairman  = profile.contact;   saveSessionMeta(); }
+// Restore active object → sessionMeta
+if(activeObjId){
+  const _obj = getActiveObject();
+  if(_obj && !sessionMeta.object){ sessionMeta.object=_obj.address; sessionMeta.chairman=_obj.contact||profile.contact||''; saveSessionMeta(); }
+}
 loadProfileUI();
+renderObjectsList();
 renderContacts();
 renderSops();
 renderSymptoms();
