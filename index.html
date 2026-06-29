@@ -230,6 +230,31 @@ border-radius: 7px; cursor: pointer;
 border: 2px solid var(--blue);
 display: block;
 }
+
+/* SESSION BAR */
+.session-bar {
+  display:flex; align-items:center; gap:8px; padding:10px 12px;
+  background:var(--navy); color:white; border-radius:10px;
+  margin-bottom:10px; cursor:pointer; font-size:13px;
+}
+.session-bar.empty { background:var(--emrg); }
+.session-bar-icon { font-size:18px; flex-shrink:0; }
+.session-bar-text { flex:1; min-width:0; }
+.session-bar-main { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.session-bar-sub { font-size:11px; opacity:0.75; margin-top:1px; }
+.session-bar-edit { font-size:12px; opacity:0.6; flex-shrink:0; }
+
+/* REPORT TYPE BUTTONS */
+.report-type-btn {
+  display:flex; align-items:center; gap:12px; width:100%;
+  padding:13px 14px; border-radius:10px; border:2px solid #E8E8E8;
+  background:white; cursor:pointer; margin-bottom:8px; text-align:left;
+  transition:border-color 0.15s;
+}
+.report-type-btn:active { background:#F5F5F5; }
+.report-type-btn .rtb-icon { font-size:22px; flex-shrink:0; }
+.report-type-btn .rtb-label { font-size:14px; font-weight:700; color:var(--navy); }
+.report-type-btn .rtb-sub { font-size:11px; color:var(--muted); margin-top:2px; }
 .del-photo-btn {
 font-size: 12px; color: var(--red); background: none;
 border: none; cursor: pointer; font-weight: 700;
@@ -405,6 +430,7 @@ padding-bottom: 24px;
 <!-- CHECKLIST PAGE -->
 <div class="page active" id="page-checks">
 <div class="section" style="padding-bottom:0">
+<div id="session-bar-wrap"></div>
 <div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px" id="domain-tabs"></div>
 </div>
 <div class="section">
@@ -778,6 +804,7 @@ risks:['Неготовность ИТП → подрядчик до сезона
 // ═══════════════════════════════════════════════════════
 let checkState = {};
 let photoState = {};
+let sessionMeta = JSON.parse(sessionStorage.getItem("hm_meta")||'{"object":"","inspector":""}');
 let currentDomain = 'roof';
 
 // ═══════════════════════════════════════════════════════
@@ -930,6 +957,7 @@ el.innerHTML = CHECKLIST_DOMAINS.map(d=>{
 
 function selectDomain(key){
 currentDomain = key;
+renderSessionBar();
 renderDomainTabs();
 renderChecklist();
 }
@@ -1136,12 +1164,35 @@ function generateReport(){
 }
 
 function shareReport(){
-  const report = generateReport();
-  if(navigator.share){
-    navigator.share({title:'Отчёт хаузмастера', text:report}).catch(()=>showShareModal(report));
-    return;
-  }
-  showShareModal(report);
+  const d = getReportData();
+  const hasProblems = d.domains.some(dom=>dom.failed.length>0);
+  document.getElementById('modal-inner').innerHTML = `
+    <div class="modal-header">
+      <div class="modal-title">📤 Выберите формат отчёта</div>
+      <div class="modal-sub">${d.object} &nbsp;|&nbsp; ${d.date}</div>
+    </div>
+    <div class="modal-section">
+      <button class="report-type-btn" onclick="openReport('osi')">
+        <span class="rtb-icon">🏢</span>
+        <div><div class="rtb-label">Отчёт для пред/ОСИ</div><div class="rtb-sub">Сводка по системам, выявленные проблемы, оценка %</div></div>
+      </button>
+      <button class="report-type-btn" onclick="openReport('insp')">
+        <span class="rtb-icon">🏛️</span>
+        <div><div class="rtb-label">Акт для жилинспекции</div><div class="rtb-sub">Все пункты с кодами нормативов, для официальной подачи</div></div>
+      </button>
+      <button class="report-type-btn" onclick="openReport('tz')">
+        <span class="rtb-icon">🔧</span>
+        <div><div class="rtb-label">ТЗ на составление сметы</div><div class="rtb-sub">Только нарушения, сгруппированные по severity</div></div>
+      </button>
+      <button class="report-type-btn" onclick="showShareModal(generateReport())" style="border-color:#E8E8E8">
+        <span class="rtb-icon">💬</span>
+        <div><div class="rtb-label">Отправить текстом</div><div class="rtb-sub">WhatsApp / Telegram / Email</div></div>
+      </button>
+    </div>
+    <div style="padding:0 16px 12px">
+      <button class="modal-close" onclick="closeModalBtn()">Закрыть</button>
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('open');
 }
 
 function showShareModal(report){
@@ -1167,6 +1218,272 @@ function showShareModal(report){
   document.getElementById('modal-overlay').classList.add('open');
 }
 
+
+
+// ═══════════════════════════════════════════════════════
+// SESSION META (объект + инспектор)
+// ═══════════════════════════════════════════════════════
+function saveSessionMeta(){ sessionStorage.setItem('hm_meta', JSON.stringify(sessionMeta)); }
+
+function renderSessionBar(){
+  const wrap = document.getElementById('session-bar-wrap');
+  if(!wrap) return;
+  const filled = sessionMeta.object || sessionMeta.inspector;
+  wrap.innerHTML = `<div class="session-bar${filled?'':' empty'}" onclick="showSessionSetup()">
+    <span class="session-bar-icon">${filled?'🏢':'⚠️'}</span>
+    <div class="session-bar-text">
+      <div class="session-bar-main">${filled?(sessionMeta.object||'Объект не указан'):'Укажите объект осмотра'}</div>
+      <div class="session-bar-sub">${filled?(sessionMeta.inspector?'👤 '+sessionMeta.inspector:'Инспектор не указан'):'Нажмите чтобы заполнить'}</div>
+    </div>
+    <span class="session-bar-edit">✏️</span>
+  </div>`;
+}
+
+function showSessionSetup(){
+  document.getElementById('modal-inner').innerHTML = `
+    <div class="modal-header">
+      <div class="modal-title">🏢 Данные осмотра</div>
+      <div class="modal-sub">Заполните перед началом обхода</div>
+    </div>
+    <div class="modal-section">
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px">АДРЕС МКД</div>
+        <input id="inp-object" type="text" placeholder="ул. Абая 12, г. Алматы"
+          value="${sessionMeta.object}"
+          style="width:100%;padding:11px 12px;border:2px solid #E8E8E8;border-radius:9px;
+          font-size:15px;box-sizing:border-box;outline:none;font-family:inherit">
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px">Ф.И.О. ИНСПЕКТОРА</div>
+        <input id="inp-inspector" type="text" placeholder="Иванов Иван Иванович"
+          value="${sessionMeta.inspector}"
+          style="width:100%;padding:11px 12px;border:2px solid #E8E8E8;border-radius:9px;
+          font-size:15px;box-sizing:border-box;outline:none;font-family:inherit">
+      </div>
+    </div>
+    <div style="padding:0 16px 16px;display:flex;gap:8px">
+      <button onclick="closeModalBtn()" style="flex:1;padding:12px;border:2px solid #E8E8E8;border-radius:9px;background:white;font-size:14px;cursor:pointer">Отмена</button>
+      <button onclick="applySessionMeta()" style="flex:2;padding:12px;border:none;border-radius:9px;background:var(--navy);color:white;font-size:14px;font-weight:700;cursor:pointer">Сохранить</button>
+    </div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(()=>document.getElementById('inp-object')?.focus(), 100);
+}
+
+function applySessionMeta(){
+  sessionMeta.object = document.getElementById('inp-object')?.value.trim()||'';
+  sessionMeta.inspector = document.getElementById('inp-inspector')?.value.trim()||'';
+  saveSessionMeta();
+  closeModalBtn();
+  renderSessionBar();
+}
+
+
+// ═══════════════════════════════════════════════════════
+// REPORT TEMPLATES
+// ═══════════════════════════════════════════════════════
+function getReportData(){
+  const now = new Date();
+  const date = now.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const domains = CHECKLIST_DOMAINS.map(d=>{
+    const items = d.items.map((item,i)=>{
+      const k = d.key+'_'+i;
+      return { text:item.text, code:item.v2, done:!!checkState[k], photo:photoState[k]||null };
+    });
+    const done = items.filter(x=>x.done).length;
+    const failed = items.filter(x=>!x.done);
+    return { key:d.key, labelRu:d.labelRu, label:d.label, color:d.color, items, done, total:items.length, failed };
+  });
+  const totalDone = domains.reduce((s,d)=>s+d.done,0);
+  const totalAll = domains.reduce((s,d)=>s+d.total,0);
+  return { date, object:sessionMeta.object||'Не указан', inspector:sessionMeta.inspector||'Не указан', domains, totalDone, totalAll };
+}
+
+function severityColor(code){
+  if(!code) return '#888';
+  if(code.includes('-L3-')) return '#D32F2F';
+  if(code.includes('-L2-')) return '#E65100';
+  return '#2E7D32';
+}
+function severityLabel(code){
+  if(!code) return '';
+  if(code.includes('-L3-')) return 'L3 АВАРИЯ';
+  if(code.includes('-L2-')) return 'L2 Срочно';
+  return 'L1 Плановое';
+}
+
+function buildReportHTML(type){
+  const d = getReportData();
+  const pct = Math.round(d.totalDone/d.totalAll*100);
+
+  const baseStyle = `
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:#1a1a2e;background:#f5f5f5}
+      .page{max-width:720px;margin:0 auto;background:white;min-height:100vh}
+      .header{background:#1a1a2e;color:white;padding:20px 24px}
+      .header h1{font-size:22px;font-weight:800;letter-spacing:0.02em}
+      .header-meta{font-size:12px;opacity:0.7;margin-top:4px}
+      .header-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+      .badge{display:inline-block;padding:3px 8px;border-radius:5px;font-size:11px;font-weight:700;color:white}
+      .section{padding:16px 24px;border-bottom:1px solid #eee}
+      .section-title{font-size:11px;font-weight:800;letter-spacing:0.08em;color:#888;margin-bottom:10px;text-transform:uppercase}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      th{background:#f0f0f0;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:0.05em}
+      td{padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+      tr:last-child td{border-bottom:none}
+      .ok{color:#2E7D32;font-weight:700}
+      .fail{color:#D32F2F;font-weight:700}
+      .domain-head{background:#1a1a2e;color:white;padding:10px 14px;font-weight:700;font-size:14px;border-radius:8px 8px 0 0;margin-top:12px}
+      img.rpt-photo{width:100px;height:75px;object-fit:cover;border-radius:6px;margin-top:6px;display:block}
+      .footer{padding:20px 24px;font-size:11px;color:#888;text-align:center;border-top:2px solid #eee}
+      @media print{body{background:white}.page{max-width:100%}}
+    </style>`;
+
+  // ── ПРЕД/ОСИ ──────────────────────────────────────────────────────────────
+  if(type==='osi'){
+    const statusColor = pct>=80?'#2E7D32':pct>=50?'#E65100':'#D32F2F';
+    const statusText = pct>=80?'УДОВЛЕТВОРИТЕЛЬНО':pct>=50?'ТРЕБУЕТ ВНИМАНИЯ':'НЕУДОВЛЕТВОРИТЕЛЬНО';
+    const problems = d.domains.flatMap(dom=>dom.failed.map(it=>({...it,domainRu:dom.labelRu,domainColor:dom.color})));
+    return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Отчёт — Пред/ОСИ</title>${baseStyle}</head><body><div class="page">
+      <div class="header">
+        <div class="header-row">
+          <div><h1>ХАУЗМАСТЕР</h1><div class="header-meta">Отчёт для председателя ОСИ</div></div>
+          <div style="text-align:right"><div style="font-size:28px;font-weight:900;color:white">${pct}%</div><div style="font-size:11px;opacity:0.7">выполнено</div></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Объект</div>
+        <div style="font-size:16px;font-weight:700">${d.object}</div>
+        <div style="font-size:13px;color:#555;margin-top:4px">👤 ${d.inspector} &nbsp;|&nbsp; 📅 ${d.date}</div>
+        <div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:${statusColor}18;border-left:4px solid ${statusColor}">
+          <span style="font-size:13px;font-weight:800;color:${statusColor}">${statusText}</span>
+          <span style="font-size:13px;color:#555;margin-left:8px">${d.totalDone} из ${d.totalAll} пунктов выполнено</span>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Оценка по системам</div>
+        <table>
+          <tr><th>Система</th><th>Выполнено</th><th>Статус</th></tr>
+          ${d.domains.map(dom=>{
+            const p=Math.round(dom.done/dom.total*100);
+            const c=p>=80?'#2E7D32':p>=50?'#E65100':'#D32F2F';
+            return `<tr>
+              <td><strong>${dom.labelRu}</strong> <span style="font-size:11px;color:#999">(${dom.label})</span></td>
+              <td>${dom.done}/${dom.total}</td>
+              <td><span class="badge" style="background:${c}">${p}%</span></td>
+            </tr>`;
+          }).join('')}
+        </table>
+      </div>
+      ${problems.length?`<div class="section">
+        <div class="section-title">Выявленные проблемы (${problems.length})</div>
+        ${problems.map(p=>`<div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <span class="badge" style="background:${p.domainColor};flex-shrink:0">${p.domainRu}</span>
+            <div>
+              <div style="font-size:14px">${p.text}</div>
+              <div style="margin-top:3px"><span class="badge" style="background:${severityColor(p.code)}">${severityLabel(p.code)}</span>
+              <span style="font-size:11px;color:#999;margin-left:6px">${p.code}</span></div>
+              ${p.photo?`<img class="rpt-photo" src="${p.photo}">`:``}
+            </div>
+          </div>
+        </div>`).join('')}
+      </div>`:'<div class="section" style="color:#2E7D32;font-weight:700;text-align:center;padding:24px">✅ Замечаний не выявлено</div>'}
+      <div class="footer">Документ сформирован приложением ХАУЗМАСТЕР &nbsp;|&nbsp; ${d.date}</div>
+    </div></body></html>`;
+  }
+
+  // ── ЖИЛИНСПЕКЦИЯ ──────────────────────────────────────────────────────────
+  if(type==='insp'){
+    return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Акт обследования МКД</title>${baseStyle}</head><body><div class="page">
+      <div class="header">
+        <h1>АКТ ОБСЛЕДОВАНИЯ МКД</h1>
+        <div class="header-meta">Для жилищной инспекции</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Реквизиты</div>
+        <table>
+          <tr><td style="width:40%;color:#888">Объект</td><td><strong>${d.object}</strong></td></tr>
+          <tr><td style="color:#888">Инспектор</td><td>${d.inspector}</td></tr>
+          <tr><td style="color:#888">Дата и время</td><td>${d.date}</td></tr>
+          <tr><td style="color:#888">Итого выполнено</td><td><strong>${d.totalDone}/${d.totalAll} (${pct}%)</strong></td></tr>
+        </table>
+      </div>
+      ${d.domains.map(dom=>`
+        <div class="section">
+          <div class="domain-head">${dom.labelRu} (${dom.label}) — ${dom.done}/${dom.total}</div>
+          <table>
+            <tr><th style="width:50%">Пункт осмотра</th><th>Код</th><th>Severity</th><th>Результат</th></tr>
+            ${dom.items.map(it=>`<tr>
+              <td>${it.text}${it.photo?'<br><img class="rpt-photo" src="'+it.photo+'">':''}</td>
+              <td style="font-size:11px;color:#555">${it.code}</td>
+              <td><span class="badge" style="background:${severityColor(it.code)};font-size:10px">${severityLabel(it.code)}</span></td>
+              <td class="${it.done?'ok':'fail'}">${it.done?'✓ Норма':'☐ Нарушение'}</td>
+            </tr>`).join('')}
+          </table>
+        </div>`).join('')}
+      <div class="section" style="margin-top:32px">
+        <div style="display:flex;justify-content:space-between;gap:40px;padding-top:8px">
+          <div style="flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px;color:#555;text-align:center">Подпись инспектора</div>
+          <div style="flex:1;border-top:1px solid #333;padding-top:6px;font-size:12px;color:#555;text-align:center">Дата</div>
+        </div>
+      </div>
+      <div class="footer">ХАУЗМАСТЕР — Система ОСИ Республики Казахстан &nbsp;|&nbsp; ${d.date}</div>
+    </div></body></html>`;
+  }
+
+  // ── ТЗ НА СМЕТУ ───────────────────────────────────────────────────────────
+  if(type==='tz'){
+    const problems = d.domains.flatMap(dom=>dom.failed.map(it=>({...it,domainRu:dom.labelRu,domainColor:dom.color})));
+    const l3 = problems.filter(p=>p.code?.includes('-L3-'));
+    const l2 = problems.filter(p=>p.code?.includes('-L2-'));
+    const l1 = problems.filter(p=>!p.code?.includes('-L3-')&&!p.code?.includes('-L2-'));
+    const section = (items, label, color) => !items.length?'': `
+      <div class="section">
+        <div class="section-title" style="color:${color}">${label} (${items.length} позиций)</div>
+        <table>
+          <tr><th>#</th><th>Описание дефекта</th><th>Система</th><th>Код</th><th>Объём / ед. изм.</th></tr>
+          ${items.map((it,i)=>`<tr>
+            <td style="color:#888">${i+1}</td>
+            <td>${it.text}${it.photo?'<br><img class="rpt-photo" src="'+it.photo+'">':''}</td>
+            <td><span class="badge" style="background:${it.domainColor}">${it.domainRu}</span></td>
+            <td style="font-size:11px;color:#555">${it.code}</td>
+            <td style="color:#aaa;font-style:italic">—</td>
+          </tr>`).join('')}
+        </table>
+      </div>`;
+    return `<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>ТЗ на составление сметы</title>${baseStyle}</head><body><div class="page">
+      <div class="header">
+        <h1>ТЗ НА СОСТАВЛЕНИЕ СМЕТЫ</h1>
+        <div class="header-meta">Техническое задание по результатам обследования</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Объект</div>
+        <div style="font-size:16px;font-weight:700">${d.object}</div>
+        <div style="font-size:13px;color:#555;margin-top:4px">👤 ${d.inspector} &nbsp;|&nbsp; 📅 ${d.date}</div>
+        <div style="margin-top:10px;font-size:13px;color:#555">Выявлено нарушений: <strong>${problems.length}</strong> из ${d.totalAll} пунктов осмотра</div>
+      </div>
+      ${section(l3,'🔴 АВАРИЙНЫЕ — устранение в течение 1–2 ч','#D32F2F')}
+      ${section(l2,'🟠 СРОЧНЫЕ — устранение в течение 24 ч','#E65100')}
+      ${section(l1,'🟢 ПЛАНОВЫЕ — устранение в течение 5–10 р.д.','#2E7D32')}
+      ${!problems.length?'<div class="section" style="color:#2E7D32;font-weight:700;text-align:center;padding:24px">✅ Нарушений не выявлено</div>':''}
+      <div class="section">
+        <div style="font-size:12px;color:#888">Колонка "Объём / ед. изм." заполняется сметчиком на основании натурного обследования.</div>
+      </div>
+      <div class="footer">ХАУЗМАСТЕР — Система ОСИ РК &nbsp;|&nbsp; ${d.date}</div>
+    </div></body></html>`;
+  }
+}
+
+function openReport(type){
+  const html = buildReportHTML(type);
+  if(!html) return;
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  closeModalBtn();
+}
 
 // ═══════════════════════════════════════════════════════
 // SWIPE — горизонтальный свайп между доменами
@@ -1206,6 +1523,7 @@ if('serviceWorker' in navigator){
 renderContacts();
 renderSops();
 renderSymptoms();
+renderSessionBar();
 renderDomainTabs();
 renderChecklist();
 renderGloss();
