@@ -255,6 +255,40 @@ display: block;
 .report-type-btn .rtb-icon { font-size:22px; flex-shrink:0; }
 .report-type-btn .rtb-label { font-size:14px; font-weight:700; color:var(--navy); }
 .report-type-btn .rtb-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+
+/* ARCHIVE PAGE */
+.archive-card {
+  background:white; border-radius:12px; padding:14px 16px;
+  margin-bottom:10px; border:2px solid #F0F0F0; cursor:pointer;
+  transition:border-color 0.15s;
+}
+.archive-card:active { border-color:var(--navy); }
+.archive-card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.archive-card-act { font-size:12px; font-weight:800; color:var(--muted); letter-spacing:0.05em; }
+.archive-card-status { font-size:11px; font-weight:700; padding:3px 8px; border-radius:5px; }
+.archive-card-addr { font-size:15px; font-weight:700; color:var(--navy); margin-top:4px; }
+.archive-card-meta { font-size:12px; color:var(--muted); margin-top:3px; }
+.archive-card-stats { display:flex; gap:12px; margin-top:8px; padding-top:8px; border-top:1px solid #F0F0F0; }
+.archive-stat { text-align:center; }
+.archive-stat-val { font-size:16px; font-weight:800; color:var(--navy); }
+.archive-stat-lbl { font-size:10px; color:var(--muted); margin-top:1px; }
+.arch-empty { text-align:center; padding:40px 20px; color:var(--muted); }
+
+/* FINALIZE MODAL */
+.fin-field { margin-bottom:14px; }
+.fin-field label { display:block; font-size:11px; font-weight:800; color:var(--muted);
+  letter-spacing:0.06em; margin-bottom:5px; text-transform:uppercase; }
+.fin-field input, .fin-field select {
+  width:100%; padding:11px 12px; border:2px solid #E8E8E8; border-radius:9px;
+  font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;
+  background:white; color:var(--navy);
+}
+.fin-field input:focus, .fin-field select:focus { border-color:var(--navy); }
+.fin-summary-row { display:flex; gap:6px; margin-top:12px; }
+.fin-summary-box { flex:1; text-align:center; padding:10px 6px; background:#F5F7FF;
+  border-radius:9px; }
+.fin-summary-box .val { font-size:20px; font-weight:900; color:var(--navy); }
+.fin-summary-box .lbl { font-size:10px; color:var(--muted); margin-top:2px; }
 .del-photo-btn {
 font-size: 12px; color: var(--red); background: none;
 border: none; cursor: pointer; font-weight: 700;
@@ -469,6 +503,17 @@ padding-bottom: 24px;
 </div>
 </div>
 
+
+<!-- ARCHIVE PAGE -->
+<div class="page" id="page-archive">
+<div class="section" style="padding-bottom:6px">
+<div class="section-label">История обследований</div>
+</div>
+<div class="section" style="padding-top:0">
+<div id="archive-list"></div>
+</div>
+</div>
+
 <!-- GLOSSARY / REFERENCE PAGE -->
 <div class="page" id="page-ref">
 <div class="search-wrap">
@@ -496,6 +541,10 @@ padding-bottom: 24px;
 </button>
 <button class="nav-btn emrg-btn" id="nav-emrg" onclick="showPage('emrg')">
 <span class="icon">🚨</span>Аварии
+</button>
+<button class="nav-btn" id="nav-archive" onclick="showPage('archive');
+renderArchive()">
+<span class="icon">📋</span>Архив
 </button>
 <button class="nav-btn" id="nav-ref" onclick="showPage('ref')">
 <span class="icon">📖</span>Справка
@@ -804,7 +853,8 @@ risks:['Неготовность ИТП → подрядчик до сезона
 // ═══════════════════════════════════════════════════════
 let checkState = {};
 let photoState = {};
-let sessionMeta = JSON.parse(sessionStorage.getItem("hm_meta")||'{"object":"","inspector":""}');
+let sessionMeta = JSON.parse(sessionStorage.getItem("hm_meta")||'{"object":"","inspector":"","chairman":""}');
+let actCounter = parseInt(localStorage.getItem("hm_act_counter")||"0");
 let currentDomain = 'roof';
 
 // ═══════════════════════════════════════════════════════
@@ -1165,29 +1215,52 @@ function generateReport(){
 
 function shareReport(){
   const d = getReportData();
-  const hasProblems = d.domains.some(dom=>dom.failed.length>0);
+  const totalIssues = d.domains.reduce((s,dom)=>s+dom.failed.length,0);
+  const totalPhotos = Object.keys(photoState).length;
+  const totalCrit = d.domains.flatMap(dom=>dom.failed).filter(it=>it.code?.includes('-L3-')).length;
   document.getElementById('modal-inner').innerHTML = `
     <div class="modal-header">
-      <div class="modal-title">📤 Выберите формат отчёта</div>
-      <div class="modal-sub">${d.object} &nbsp;|&nbsp; ${d.date}</div>
+      <div class="modal-title">📋 Завершить обследование</div>
+      <div class="modal-sub">${d.object||'Объект не указан'}</div>
     </div>
-    <div class="modal-section">
-      <button class="report-type-btn" onclick="openReport('osi')">
-        <span class="rtb-icon">🏢</span>
-        <div><div class="rtb-label">Отчёт для пред/ОСИ</div><div class="rtb-sub">Сводка по системам, выявленные проблемы, оценка %</div></div>
+    <div class="fin-summary-row" style="padding:0 16px 8px">
+      <div class="fin-summary-box"><div class="val">${d.totalAll}</div><div class="lbl">Пунктов</div></div>
+      <div class="fin-summary-box"><div class="val">${d.totalDone}</div><div class="lbl">Проверено</div></div>
+      <div class="fin-summary-box"><div class="val" style="color:${totalIssues>0?'var(--red)':'var(--green)'}">${totalIssues}</div><div class="lbl">Замечаний</div></div>
+      <div class="fin-summary-box"><div class="val" style="color:${totalCrit>0?'var(--red)':'var(--muted)'}">${totalCrit}</div><div class="lbl">Критичных</div></div>
+      <div class="fin-summary-box"><div class="val">${totalPhotos}</div><div class="lbl">Фото</div></div>
+    </div>
+    <div class="modal-section" style="padding-top:4px">
+      <div class="fin-field">
+        <label>Основание обследования</label>
+        <select id="fin-reason">
+          <option>Плановый обход</option>
+          <option>Внеплановый обход</option>
+          <option>Обращение жителей</option>
+          <option>Аварийная ситуация</option>
+          <option>Подготовка к отопительному сезону</option>
+          <option>Контроль после ремонта</option>
+        </select>
+      </div>
+      <div class="fin-field">
+        <label>Председатель ОСИ</label>
+        <input id="fin-chairman" type="text" placeholder="Петров Пётр Петрович" value="${sessionMeta.chairman||''}">
+      </div>
+    </div>
+    <div style="padding:0 16px 8px">
+      <button onclick="finalizeReport()" style="width:100%;padding:14px;border:none;border-radius:10px;background:var(--navy);color:white;font-size:15px;font-weight:800;cursor:pointer;margin-bottom:8px">
+        📄 Сформировать акт обследования
       </button>
-      <button class="report-type-btn" onclick="openReport('insp')">
-        <span class="rtb-icon">🏛️</span>
-        <div><div class="rtb-label">Акт для жилинспекции</div><div class="rtb-sub">Все пункты с кодами нормативов, для официальной подачи</div></div>
-      </button>
-      <button class="report-type-btn" onclick="openReport('tz')">
-        <span class="rtb-icon">🔧</span>
-        <div><div class="rtb-label">ТЗ на составление сметы</div><div class="rtb-sub">Только нарушения, сгруппированные по severity</div></div>
-      </button>
-      <button class="report-type-btn" onclick="showShareModal(generateReport())" style="border-color:#E8E8E8">
-        <span class="rtb-icon">💬</span>
-        <div><div class="rtb-label">Отправить текстом</div><div class="rtb-sub">WhatsApp / Telegram / Email</div></div>
-      </button>
+      <div style="display:flex;gap:8px">
+        <button class="report-type-btn" style="flex:1;margin-bottom:0;padding:10px 8px" onclick="openReport('tz')">
+          <span class="rtb-icon" style="font-size:16px">🔧</span>
+          <div><div class="rtb-label" style="font-size:12px">ТЗ на смету</div></div>
+        </button>
+        <button class="report-type-btn" style="flex:1;margin-bottom:0;padding:10px 8px" onclick="showShareModal(generateReport())">
+          <span class="rtb-icon" style="font-size:16px">💬</span>
+          <div><div class="rtb-label" style="font-size:12px">Текст</div></div>
+        </button>
+      </div>
     </div>
     <div style="padding:0 16px 12px">
       <button class="modal-close" onclick="closeModalBtn()">Закрыть</button>
@@ -1242,23 +1315,21 @@ function renderSessionBar(){
 function showSessionSetup(){
   document.getElementById('modal-inner').innerHTML = `
     <div class="modal-header">
-      <div class="modal-title">🏢 Данные осмотра</div>
+      <div class="modal-title">🏢 Данные объекта</div>
       <div class="modal-sub">Заполните перед началом обхода</div>
     </div>
     <div class="modal-section">
-      <div style="margin-bottom:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px">АДРЕС МКД</div>
-        <input id="inp-object" type="text" placeholder="ул. Абая 12, г. Алматы"
-          value="${sessionMeta.object}"
-          style="width:100%;padding:11px 12px;border:2px solid #E8E8E8;border-radius:9px;
-          font-size:15px;box-sizing:border-box;outline:none;font-family:inherit">
+      <div class="fin-field">
+        <label>Адрес МКД</label>
+        <input id="inp-object" type="text" placeholder="ул. Абая 12, г. Алматы" value="${sessionMeta.object}">
       </div>
-      <div>
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:5px">Ф.И.О. ИНСПЕКТОРА</div>
-        <input id="inp-inspector" type="text" placeholder="Иванов Иван Иванович"
-          value="${sessionMeta.inspector}"
-          style="width:100%;padding:11px 12px;border:2px solid #E8E8E8;border-radius:9px;
-          font-size:15px;box-sizing:border-box;outline:none;font-family:inherit">
+      <div class="fin-field">
+        <label>Ф.И.О. исполнителя</label>
+        <input id="inp-inspector" type="text" placeholder="Иванов Иван Иванович" value="${sessionMeta.inspector}">
+      </div>
+      <div class="fin-field">
+        <label>Председатель ОСИ</label>
+        <input id="inp-chairman" type="text" placeholder="Петров Пётр Петрович" value="${sessionMeta.chairman||''}">
       </div>
     </div>
     <div style="padding:0 16px 16px;display:flex;gap:8px">
@@ -1272,6 +1343,7 @@ function showSessionSetup(){
 function applySessionMeta(){
   sessionMeta.object = document.getElementById('inp-object')?.value.trim()||'';
   sessionMeta.inspector = document.getElementById('inp-inspector')?.value.trim()||'';
+  sessionMeta.chairman = document.getElementById('inp-chairman')?.value.trim()||'';
   saveSessionMeta();
   closeModalBtn();
   renderSessionBar();
@@ -1483,6 +1555,333 @@ function openReport(type){
   window.open(url, '_blank');
   setTimeout(()=>URL.revokeObjectURL(url), 60000);
   closeModalBtn();
+}
+
+
+// ═══════════════════════════════════════════════════════
+// STANDARD INSPECTION REPORT v1.0
+// ═══════════════════════════════════════════════════════
+function generateActNumber(){
+  const now = new Date();
+  const d = now.toISOString().slice(0,10).replace(/-/g,'');
+  actCounter++;
+  localStorage.setItem('hm_act_counter', actCounter);
+  return 'HM-' + d + '-' + String(actCounter).padStart(3,'0');
+}
+
+function finalizeReport(){
+  const reason = document.getElementById('fin-reason')?.value||'Плановый обход';
+  const chairman = document.getElementById('fin-chairman')?.value.trim()||sessionMeta.chairman||'';
+  if(chairman) { sessionMeta.chairman = chairman; saveSessionMeta(); }
+  const actNum = generateActNumber();
+  const reportHTML = buildStandardReport(reason, chairman, actNum);
+  const entry = buildArchiveEntry(actNum, reason, chairman);
+  saveToArchive(entry);
+  closeModalBtn();
+  const blob = new Blob([reportHTML], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  window.open(url,'_blank');
+  setTimeout(()=>URL.revokeObjectURL(url), 120000);
+}
+
+function buildStandardReport(reason, chairman, actNum){
+  const d = getReportData();
+  const now = new Date();
+  const dateLong = now.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
+  const allIssues = d.domains.flatMap(dom=>
+    dom.failed.map(it=>({...it, domainRu:dom.labelRu, domainKey:dom.key, domainColor:dom.color}))
+  );
+  const l3 = allIssues.filter(x=>x.code?.includes('-L3-'));
+  const l2 = allIssues.filter(x=>x.code?.includes('-L2-'));
+  const l1 = allIssues.filter(x=>!x.code?.includes('-L3-')&&!x.code?.includes('-L2-'));
+  const totalPhotos = allIssues.filter(x=>x.photo).length;
+  const pct = Math.round(d.totalDone/d.totalAll*100);
+
+  // scope
+  const scopeHtml = d.domains.map(dom=>{
+    const hasItems = dom.done > 0 || dom.failed.length > 0;
+    return `<span style="margin-right:14px;color:${hasItems?'#1a1a2e':'#aaa'}">${hasItems?'☑':'☐'} ${dom.labelRu} (${dom.label})</span>`;
+  }).join('');
+
+  // заключение
+  const domainsWithIssues = d.domains.filter(x=>x.failed.length>0).map(x=>x.labelRu);
+  let conclusion = '';
+  if(allIssues.length===0){
+    conclusion = 'По результатам обследования замечаний не выявлено. Все инженерные системы функционируют в штатном режиме.';
+  } else {
+    conclusion = `По результатам обследования выявлены замечания по ${domainsWithIssues.length===1?'системе':'системам'}: <strong>${domainsWithIssues.join(', ')}</strong>. `;
+    if(l3.length>0) conclusion += `Выявлено <strong style="color:#D32F2F">${l3.length} критических дефекта (L3)</strong>, требующих немедленного устранения. `;
+    else conclusion += 'Критических дефектов (L3), требующих немедленного реагирования, не выявлено. ';
+    conclusion += 'Рекомендуется устранение замечаний в сроки согласно уровню Severity.';
+  }
+
+  const sev = (code)=>{
+    if(!code) return {label:'—',color:'#888',short:'—'};
+    if(code.includes('-L3-')) return {label:'L3 — АВАРИЯ',color:'#D32F2F',short:'L3'};
+    if(code.includes('-L2-')) return {label:'L2 — Срочно',color:'#E65100',short:'L2'};
+    return {label:'L1 — Плановое',color:'#2E7D32',short:'L1'};
+  };
+
+  const rec = (code)=>{
+    if(!code) return '—';
+    if(code.includes('-L3-')) return 'Немедленное устранение. Уведомить председателя ОСИ. SLA: ≤ 1–2 ч';
+    if(code.includes('-L2-')) return 'Устранить в течение 24 часов. Зафиксировать в журнале. SLA: ≤ 24 ч';
+    return 'Плановое устранение. Включить в план ТО. SLA: 5–10 рабочих дней';
+  };
+
+  const issuesTableRows = allIssues.map((it,i)=>{
+    const s = sev(it.code);
+    return `<tr>
+      <td style="text-align:center;color:#888;font-size:12px">${i+1}</td>
+      <td style="font-size:11px;color:#555;white-space:nowrap">${it.code}</td>
+      <td><span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:11px;font-weight:700;color:white;background:${it.domainColor}">${it.domainRu}</span></td>
+      <td>${it.text}${it.photo?`<br><img src="${it.photo}" style="width:120px;height:90px;object-fit:cover;border-radius:7px;margin-top:7px;display:block;border:1px solid #eee">`:'<br><span style="font-size:11px;color:#bbb">Фото не прикреплено</span>'}</td>
+      <td><span style="display:inline-block;padding:3px 7px;border-radius:5px;font-size:11px;font-weight:700;color:white;background:${s.color}">${s.short}</span></td>
+      <td style="font-size:12px;color:#555">${rec(it.code)}</td>
+    </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${actNum} — АКТ ТЕХНИЧЕСКОГО ОБСЛЕДОВАНИЯ</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;font-size:13px;color:#1a1a2e;background:#f0f2f5}
+.page{max-width:800px;margin:0 auto;background:white;min-height:100vh;box-shadow:0 0 20px rgba(0,0,0,0.08)}
+.toolbar{background:#1a1a2e;padding:12px 20px;display:flex;gap:10px;align-items:center;position:sticky;top:0;z-index:10}
+.tb-btn{padding:9px 18px;border-radius:8px;border:none;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px}
+.tb-btn-primary{background:#4F8EF7;color:white}
+.tb-btn-secondary{background:rgba(255,255,255,0.12);color:white}
+.tb-spacer{flex:1}
+.doc-header{background:#1a1a2e;color:white;padding:28px 32px 24px}
+.doc-brand{font-size:12px;font-weight:800;letter-spacing:0.15em;opacity:0.6;margin-bottom:8px}
+.doc-title{font-size:22px;font-weight:900;line-height:1.2;letter-spacing:0.02em}
+.doc-subtitle{font-size:14px;opacity:0.7;margin-top:4px}
+.doc-act-num{display:inline-block;margin-top:16px;background:rgba(255,255,255,0.12);padding:6px 14px;border-radius:6px;font-size:13px;font-weight:700;letter-spacing:0.05em}
+.section{padding:20px 32px;border-bottom:1px solid #eee}
+.section-title{font-size:10px;font-weight:900;letter-spacing:0.12em;color:#888;text-transform:uppercase;margin-bottom:14px;padding-bottom:6px;border-bottom:2px solid #f0f0f0}
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.meta-row{padding:8px 0;border-bottom:1px solid #f5f5f5;display:flex;gap:12px}
+.meta-row:last-child{border-bottom:none}
+.meta-label{font-size:11px;color:#888;font-weight:600;min-width:160px;flex-shrink:0}
+.meta-value{font-size:13px;font-weight:600;color:#1a1a2e}
+.stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:4px}
+.stat-box{text-align:center;padding:14px 8px;background:#f8f9ff;border-radius:10px;border:2px solid #eef}
+.stat-val{font-size:26px;font-weight:900;color:#1a1a2e;line-height:1}
+.stat-val.red{color:#D32F2F}
+.stat-val.green{color:#2E7D32}
+.stat-lbl{font-size:10px;color:#888;margin-top:5px;font-weight:600;letter-spacing:0.04em}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+th{background:#f0f2f5;padding:9px 10px;text-align:left;font-size:10px;font-weight:800;color:#555;text-transform:uppercase;letter-spacing:0.06em;border-bottom:2px solid #dde}
+td{padding:11px 10px;border-bottom:1px solid #f0f0f0;vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafbff}
+.scope-line{line-height:2;font-size:13px}
+.conclusion-box{background:#f8f9ff;border-left:4px solid #1a1a2e;padding:14px 18px;border-radius:0 8px 8px 0;line-height:1.6;font-size:13px}
+.rec-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0f0}
+.rec-item:last-child{border-bottom:none}
+.rec-badge{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:800;color:white;flex-shrink:0;height:fit-content}
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:4px}
+.sign-box{padding-top:40px;border-top:1px solid #333}
+.sign-name{font-size:11px;color:#555;margin-top:6px}
+.sign-role{font-size:10px;color:#aaa;margin-top:2px;font-weight:600;letter-spacing:0.04em}
+.footer{padding:16px 32px;text-align:center;font-size:11px;color:#aaa;background:#f8f9ff;border-top:1px solid #eee}
+.no-issues{text-align:center;padding:32px;color:#2E7D32;font-weight:700;font-size:15px}
+@media print{
+  .toolbar{display:none!important}
+  body{background:white}
+  .page{box-shadow:none;max-width:100%}
+  tr{page-break-inside:avoid}
+  .section{page-break-inside:avoid}
+}
+@media(max-width:600px){
+  .doc-header,.section{padding-left:16px;padding-right:16px}
+  .stat-grid{grid-template-columns:repeat(3,1fr)}
+  .meta-grid{grid-template-columns:1fr}
+  .sign-grid{grid-template-columns:1fr}
+  table{font-size:12px}
+  th,td{padding:7px 6px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="toolbar">
+  <button class="tb-btn tb-btn-primary" onclick="window.print()">💾 Сохранить PDF</button>
+  <button class="tb-btn tb-btn-secondary" onclick="doShare()">📤 Поделиться</button>
+  <div class="tb-spacer"></div>
+  <span style="color:rgba(255,255,255,0.4);font-size:11px">${actNum}</span>
+</div>
+
+<div class="doc-header">
+  <div class="doc-brand">HOUSEMASTER · СИСТЕМА ОСИ РК</div>
+  <div class="doc-title">АКТ ТЕХНИЧЕСКОГО ОБСЛЕДОВАНИЯ<br>МНОГОКВАРТИРНОГО ЖИЛОГО ДОМА</div>
+  <div class="doc-act-num">${actNum}</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Титульные сведения</div>
+  <div class="meta-row"><span class="meta-label">Дата обследования</span><span class="meta-value">${dateLong}, ${d.date.split(' ')[1]}</span></div>
+  <div class="meta-row"><span class="meta-label">Адрес МКД</span><span class="meta-value">${d.object}</span></div>
+  <div class="meta-row"><span class="meta-label">Исполнитель</span><span class="meta-value">${d.inspector}</span></div>
+  <div class="meta-row"><span class="meta-label">Председатель ОСИ</span><span class="meta-value">${chairman||'—'}</span></div>
+  <div class="meta-row"><span class="meta-label">Основание обследования</span><span class="meta-value">${reason}</span></div>
+  <div class="meta-row"><span class="meta-label">Объём обследования</span><span class="meta-value scope-line">${scopeHtml}</span></div>
+  <div class="meta-row"><span class="meta-label">Стандарт документа</span><span class="meta-value">Housemaster Standard Inspection Report v1.0</span></div>
+</div>
+
+<div class="section">
+  <div class="section-title">Сводные показатели</div>
+  <div class="stat-grid">
+    <div class="stat-box"><div class="stat-val">${d.totalAll}</div><div class="stat-lbl">Всего пунктов</div></div>
+    <div class="stat-box"><div class="stat-val green">${d.totalDone}</div><div class="stat-lbl">Проверено</div></div>
+    <div class="stat-box"><div class="stat-val ${allIssues.length>0?'red':''}">${allIssues.length}</div><div class="stat-lbl">Замечаний</div></div>
+    <div class="stat-box"><div class="stat-val ${l3.length>0?'red':''}">${l3.length}</div><div class="stat-lbl">Критичных L3</div></div>
+    <div class="stat-box"><div class="stat-val">${totalPhotos}</div><div class="stat-lbl">Фото</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Таблица замечаний${allIssues.length>0?' ('+allIssues.length+')':''}</div>
+  ${allIssues.length===0
+    ? '<div class="no-issues">✅ Замечаний не выявлено</div>'
+    : `<table>
+        <tr><th style="width:32px">№</th><th style="width:110px">Код</th><th style="width:90px">Домен</th><th>Описание / Фото</th><th style="width:60px">Sev.</th><th>Рекомендация</th></tr>
+        ${issuesTableRows}
+       </table>`
+  }
+</div>
+
+<div class="section">
+  <div class="section-title">Заключение</div>
+  <div class="conclusion-box">${conclusion}</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Рекомендации по устранению</div>
+  <div class="rec-item">
+    <span class="rec-badge" style="background:#D32F2F">L3</span>
+    <div><strong>Немедленное реагирование</strong> — не более 1–2 часов.<br><span style="color:#555">Уведомить председателя ОСИ и аварийную службу. Обеспечить безопасность жителей.</span></div>
+  </div>
+  <div class="rec-item">
+    <span class="rec-badge" style="background:#E65100">L2</span>
+    <div><strong>Срочное устранение</strong> — в течение 24 часов.<br><span style="color:#555">Зафиксировать в журнале дефектов. Привлечь сервисную организацию.</span></div>
+  </div>
+  <div class="rec-item">
+    <span class="rec-badge" style="background:#2E7D32">L1</span>
+    <div><strong>Плановое устранение</strong> — в течение 5–10 рабочих дней.<br><span style="color:#555">Включить в план планово-предупредительного ремонта (ППР).</span></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Подписи сторон</div>
+  <div class="sign-grid">
+    <div class="sign-box">
+      <div class="sign-name">${d.inspector||'____________________________'}</div>
+      <div class="sign-role">ИСПОЛНИТЕЛЬ ОБСЛЕДОВАНИЯ</div>
+    </div>
+    <div class="sign-box">
+      <div class="sign-name">${chairman||'____________________________'}</div>
+      <div class="sign-role">ПРЕДСЕДАТЕЛЬ ОСИ</div>
+    </div>
+    <div class="sign-box" style="margin-top:20px">
+      <div class="sign-name">${dateLong}</div>
+      <div class="sign-role">ДАТА СОСТАВЛЕНИЯ АКТ</div>
+    </div>
+    <div class="sign-box" style="margin-top:20px">
+      <div class="sign-name">____________________________</div>
+      <div class="sign-role">ДАТА УТВЕРЖДЕНИЯ</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  Документ сформирован системой HOUSEMASTER · Система ОСИ Республики Казахстан · ${actNum} · ${d.date}
+</div>
+
+</div>
+<script>
+function doShare(){
+  const text='АКТ ТЕХНИЧЕСКОГО ОБСЛЕДОВАНИЯ МКД\\n${actNum}\\nОбъект: ${d.object}\\nДата: ${dateLong}\\nИсполнитель: ${d.inspector}\\nЗамечаний: ${allIssues.length} / Критичных: ${l3.length}';
+  if(navigator.share){navigator.share({title:'${actNum}',text}).catch(()=>fallbackShare(text));}
+  else fallbackShare(text);
+}
+function fallbackShare(text){
+  const enc=encodeURIComponent(text);
+  const menu=document.createElement('div');
+  menu.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:flex-end';
+  menu.innerHTML='<div style="width:100%;background:white;border-radius:16px 16px 0 0;padding:20px"><div style="font-weight:800;margin-bottom:14px;font-size:16px">Поделиться актом</div>'
+  +'<a href="https://wa.me/?text='+enc+'" target="_blank" style="display:block;padding:12px;background:#25D366;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:8px;text-align:center">💬 WhatsApp</a>'
+  +'<a href="https://t.me/share/url?text='+enc+'" target="_blank" style="display:block;padding:12px;background:#2AABEE;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:8px;text-align:center">✈️ Telegram</a>'
+  +'<a href="mailto:?subject=${actNum}&body='+enc+'" style="display:block;padding:12px;background:#1a1a2e;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:12px;text-align:center">✉️ Email</a>'
+  +'<button onclick="this.closest(\'div[style]\').remove()" style="width:100%;padding:12px;border:2px solid #eee;border-radius:10px;background:white;font-size:14px;cursor:pointer">Закрыть</button></div>';
+  document.body.appendChild(menu);
+  menu.onclick=e=>{if(e.target===menu)menu.remove()};
+}
+<\/script>
+</body>
+</html>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// ARCHIVE
+// ═══════════════════════════════════════════════════════
+function buildArchiveEntry(actNum, reason, chairman){
+  const d = getReportData();
+  const allIssues = d.domains.flatMap(dom=>dom.failed);
+  const l3 = allIssues.filter(x=>x.code?.includes('-L3-')).length;
+  return {
+    id: actNum,
+    date: d.date,
+    object: d.object,
+    inspector: d.inspector,
+    chairman: chairman||'',
+    reason: reason,
+    totalDone: d.totalDone,
+    totalAll: d.totalAll,
+    issues: allIssues.length,
+    critical: l3,
+    status: 'Завершён'
+  };
+}
+
+function saveToArchive(entry){
+  try {
+    const archive = JSON.parse(localStorage.getItem('hm_archive')||'[]');
+    archive.unshift(entry);
+    if(archive.length>100) archive.splice(100);
+    localStorage.setItem('hm_archive', JSON.stringify(archive));
+  } catch(e){ console.warn('Archive save failed:', e); }
+}
+
+function renderArchive(){
+  const el = document.getElementById('archive-list');
+  if(!el) return;
+  let archive = [];
+  try { archive = JSON.parse(localStorage.getItem('hm_archive')||'[]'); } catch(e){}
+  if(!archive.length){
+    el.innerHTML = '<div class="arch-empty">📋<br><br>История обследований пуста.<br>Сформируйте первый акт из чек-листа.</div>';
+    return;
+  }
+  const statusColors = {'Черновик':'#888','Завершён':'#2E7D32','Отправлен':'#1565C0','Архив':'#555'};
+  el.innerHTML = archive.map((e,i)=>`
+    <div class="archive-card">
+      <div class="archive-card-top">
+        <div class="archive-card-act">${e.id}</div>
+        <span class="archive-card-status" style="background:${statusColors[e.status]||'#888'};color:white">${e.status}</span>
+      </div>
+      <div class="archive-card-addr">${e.object||'Объект не указан'}</div>
+      <div class="archive-card-meta">👤 ${e.inspector||'—'} · ${e.reason||'—'} · ${e.date}</div>
+      <div class="archive-card-stats">
+        <div class="archive-stat"><div class="archive-stat-val">${e.totalDone}/${e.totalAll}</div><div class="archive-stat-lbl">Выполнено</div></div>
+        <div class="archive-stat"><div class="archive-stat-val" style="color:${e.issues>0?'var(--red)':'var(--green)'}">${e.issues}</div><div class="archive-stat-lbl">Замечаний</div></div>
+        <div class="archive-stat"><div class="archive-stat-val" style="color:${e.critical>0?'var(--red)':'var(--muted)'}">${e.critical}</div><div class="archive-stat-lbl">Критичных</div></div>
+      </div>
+    </div>`).join('');
 }
 
 // ═══════════════════════════════════════════════════════
