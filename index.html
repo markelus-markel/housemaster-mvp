@@ -794,6 +794,15 @@ items:[
 },
 ];
 
+
+const DOMAIN_SOURCE = {
+  'roof': {tom:'Том II',  razdel:'Раздел ROOF', label:'Кровля'},
+  'base': {tom:'Том VI',  razdel:'Раздел BASE', label:'Подвал'},
+  'heat': {tom:'Том IV',  razdel:'Раздел HEAT', label:'Отопление'},
+  'watr': {tom:'Том V',   razdel:'Раздел WATR', label:'Водопровод'},
+  'elec': {tom:'Том III', razdel:'Раздел ELEC', label:'Электрика'},
+};
+
 const GLOSSARY = [
 {a:'ИТП', ru:'Индивидуальный тепловой пункт', kz:'Жеке жылу торабы', d:'Узел передачи тепла от теплосети в систему МКД'},
 {a:'ВРУ', ru:'Вводное распределительное устройство', kz:'Кіріс бөлу қондырғысы', d:'Главный электрический щит МКД на вводе'},
@@ -1574,15 +1583,511 @@ function finalizeReport(){
   const chairman = document.getElementById('fin-chairman')?.value.trim()||sessionMeta.chairman||'';
   if(chairman) { sessionMeta.chairman = chairman; saveSessionMeta(); }
   const actNum = generateActNumber();
-  const reportHTML = buildStandardReport(reason, chairman, actNum);
+  const reportHTML = buildGovAct(reason, chairman, actNum);
   const entry = buildArchiveEntry(actNum, reason, chairman);
   saveToArchive(entry);
   closeModalBtn();
   const blob = new Blob([reportHTML], {type:'text/html;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   window.open(url,'_blank');
-  setTimeout(()=>URL.revokeObjectURL(url), 120000);
+  setTimeout(()=>URL.revokeObjectURL(url), 180000);
 }
+
+
+// ═══════════════════════════════════════════════════════
+// GOV ACT BUILDER — Акт технического обследования А4
+// ═══════════════════════════════════════════════════════
+function buildGovAct(reason, chairman, actNum){
+  const d = getReportData();
+  const now = new Date();
+  const dateLong = now.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
+  const dateShort = now.toLocaleDateString('ru-RU');
+
+  // Определить обследованные домены (хотя бы один пункт проверен или есть фото)
+  const inspected = d.domains.filter(dom=>
+    dom.done > 0 || dom.items.some((_,i)=>photoState[dom.key+'_'+i])
+  );
+  const notInspected = d.domains.filter(dom=>
+    dom.done === 0 && !dom.items.some((_,i)=>photoState[dom.key+'_'+i])
+  );
+
+  // Сводные показатели
+  const allRows = inspected.flatMap(dom=>dom.items.map((item,i)=>{
+    const k = dom.key+'_'+i;
+    const isOk = !!checkState[k];
+    const photo = photoState[k]||null;
+    const src = DOMAIN_SOURCE[dom.key]||{tom:'—',razdel:'—'};
+    const sevCode = item.v2||'';
+    const sevLvl = sevCode.includes('-L3-')?'L3':sevCode.includes('-L2-')?'L2':sevCode.includes('-L1-')?'L1':'—';
+    const rec = isOk?'—':
+      sevCode.includes('-L3-')?'Немедленное устранение. SLA ≤ 1–2 ч.':
+      sevCode.includes('-L2-')?'Устранить в течение 24 ч.':
+      'Плановое устранение. SLA 5–10 р.д.';
+    return {
+      domKey: dom.key, domRu: dom.labelRu, domLabel: dom.label,
+      domColor: dom.color,
+      code: item.v2||'—',
+      source: src.tom+' / '+src.razdel,
+      name: item.text,
+      status: isOk?'Соответствует':'Замечание',
+      sevLvl, photo, rec,
+      deadline:'', responsible:'', execStatus:'Открыто'
+    };
+  }));
+
+  const totalAll = allRows.length;
+  const totalOk = allRows.filter(r=>r.status==='Соответствует').length;
+  const totalIssues = allRows.filter(r=>r.status==='Замечание').length;
+  const totalL3 = allRows.filter(r=>r.sevLvl==='L3'&&r.status==='Замечание').length;
+  const totalL2 = allRows.filter(r=>r.sevLvl==='L2'&&r.status==='Замечание').length;
+  const totalL1 = allRows.filter(r=>r.sevLvl==='L1'&&r.status==='Замечание').length;
+  const totalPhotos = allRows.filter(r=>r.photo).length;
+
+  // Заключение
+  const domainsWithIssues = inspected.filter(dom=>dom.failed.length>0).map(d=>d.labelRu);
+  let conclusion = '';
+  if(totalIssues===0){
+    conclusion = `По результатам технического обследования общего имущества МКД по адресу: <strong>${d.object}</strong>, проведённого ${dateLong}, замечаний не выявлено. Инженерные системы функционируют в штатном режиме.`;
+  } else {
+    conclusion = `По результатам технического обследования общего имущества МКД по адресу: <strong>${d.object}</strong>, проведённого ${dateLong}, выявлены замечания по ${domainsWithIssues.length===1?'системе':'системам'}: <strong>${domainsWithIssues.join(', ')}</strong>. `;
+    if(totalL3>0) conclusion += `Выявлено <strong>${totalL3} критических дефекта (L3)</strong>, требующих немедленного устранения. `;
+    else conclusion += 'Дефектов категории L3 не выявлено. ';
+    conclusion += `Всего замечаний: <strong>${totalIssues}</strong> из <strong>${totalAll}</strong> проверенных пунктов. Рекомендуется устранение замечаний в сроки согласно классификатору Severity.`;
+  }
+
+  // Сводная таблица доменов
+  const domainSummaryRows = d.domains.map(dom=>{
+    const isInsp = inspected.some(x=>x.key===dom.key);
+    const src = DOMAIN_SOURCE[dom.key]||{tom:'—',razdel:'—'};
+    const pct = isInsp ? Math.round(dom.done/dom.total*100)+'%' : '—';
+    const statusText = isInsp ? (dom.failed.length===0?'Замечаний нет':'Замечания: '+dom.failed.length) : 'Не обследован';
+    const statusColor = isInsp ? (dom.failed.length===0?'#2E7D32':'#E65100') : '#888';
+    return `<tr>
+      <td>${dom.labelRu}</td>
+      <td style="font-size:10px;color:#555">${dom.label}</td>
+      <td style="font-size:10px;color:#555">${src.tom} / ${src.razdel}</td>
+      <td style="text-align:center">${isInsp?dom.done+'/'+dom.total:'—'}</td>
+      <td style="text-align:center;color:${statusColor};font-weight:700">${statusText}</td>
+      <td style="text-align:center">${isInsp?'✓ Обследован':'☐ Пропущен'}</td>
+    </tr>`;
+  }).join('');
+
+  // Строки основной таблицы (JSON для передачи в generated HTML)
+  const rowsJSON = JSON.stringify(allRows.map(r=>({...r, photo:r.photo?'[PHOTO]':null})));
+
+  // Фото как отдельный объект (base64)
+  const photosData = {};
+  allRows.forEach((r,i)=>{ if(r.photo) photosData[i]=r.photo; });
+  const photosJSON = JSON.stringify(photosData);
+
+  const sevColor = {'L3':'#C62828','L2':'#E65100','L1':'#2E7D32','—':'#9E9E9E'};
+
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${actNum} — Акт технического обследования МКД</title>
+<style>
+/* ── RESET ── */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Times New Roman',Times,serif;font-size:11pt;color:#000;background:#e0e0e0;line-height:1.35}
+
+/* ── PAGE ── */
+.page-wrap{max-width:210mm;margin:0 auto;background:white}
+.page{padding:20mm 15mm 20mm 20mm}
+
+/* ── TOOLBAR ── */
+.toolbar{background:#1a1a2e;padding:10px 20px;display:flex;gap:8px;align-items:center;
+  position:sticky;top:0;z-index:100;flex-wrap:wrap}
+.tb-btn{padding:8px 16px;border-radius:6px;border:none;font-size:12px;font-weight:700;
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:sans-serif}
+.tb-primary{background:#2563EB;color:white}
+.tb-secondary{background:rgba(255,255,255,0.15);color:white}
+.tb-danger{background:#991B1B;color:white}
+.tb-spacer{flex:1}
+.tb-id{color:rgba(255,255,255,0.4);font-size:10px;font-family:sans-serif}
+
+/* ── HEADER ── */
+.doc-header{text-align:center;border-bottom:3px solid #000;padding-bottom:10mm;margin-bottom:8mm}
+.brand{font-size:9pt;font-weight:700;letter-spacing:0.2em;color:#555;margin-bottom:4mm}
+.doc-title{font-size:16pt;font-weight:700;line-height:1.3;text-transform:uppercase}
+.doc-subtitle{font-size:11pt;margin-top:3mm}
+.doc-actnum{font-size:10pt;margin-top:4mm;font-weight:700}
+
+/* ── REQUISITES ── */
+.req-table{width:100%;border-collapse:collapse;margin-bottom:6mm}
+.req-table td{padding:2.5mm 3mm;vertical-align:top;font-size:10.5pt}
+.req-table td:first-child{width:52mm;font-weight:700;white-space:nowrap;color:#333}
+.req-table td:last-child{border-bottom:1px solid #aaa}
+
+/* ── SECTION TITLE ── */
+.sec-title{font-size:10pt;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;
+  margin:6mm 0 3mm;padding-bottom:2mm;border-bottom:1.5px solid #000}
+
+/* ── SUMMARY ── */
+.sum-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3mm;margin-bottom:6mm}
+.sum-box{border:1px solid #ccc;border-radius:2mm;padding:3mm 2mm;text-align:center}
+.sum-val{font-size:18pt;font-weight:700;line-height:1}
+.sum-lbl{font-size:7.5pt;color:#555;margin-top:1.5mm;line-height:1.2}
+
+/* ── DOMAIN SUMMARY TABLE ── */
+.dom-table{width:100%;border-collapse:collapse;font-size:9.5pt;margin-bottom:6mm}
+.dom-table th{background:#1a1a2e;color:white;padding:2.5mm 3mm;text-align:left;font-weight:700;font-size:9pt}
+.dom-table td{padding:2.5mm 3mm;border-bottom:1px solid #eee;vertical-align:middle}
+.dom-table tr:last-child td{border-bottom:none}
+
+/* ── MAIN TABLE ── */
+.act-table-wrap{overflow-x:auto;margin-bottom:6mm}
+.act-table{width:100%;border-collapse:collapse;font-size:8.5pt;table-layout:fixed}
+.act-table th{background:#1a1a2e;color:white;padding:2.5mm 2mm;text-align:center;
+  font-size:8pt;font-weight:700;vertical-align:middle;line-height:1.2;white-space:normal;
+  border-right:1px solid rgba(255,255,255,0.15)}
+.act-table th:last-child{border-right:none}
+.act-table td{padding:2mm 2mm;border:1px solid #ddd;vertical-align:top;font-size:8.5pt;word-break:break-word}
+.act-table tr.issue-row td{background:#FFF8F8}
+.act-table tr.ok-row td{background:#FAFFFE}
+.act-table tr:hover td{background:#F0F4FF}
+.act-table td[contenteditable=true]{background:#FFFDE7;cursor:text;outline:none;min-height:6mm}
+.act-table td[contenteditable=true]:focus{background:#FFF9C4;box-shadow:inset 0 0 0 1.5px #F59E0B}
+.sev-badge{display:inline-block;padding:1.5mm 3mm;border-radius:2mm;color:white;
+  font-size:7.5pt;font-weight:700}
+.dom-badge{display:inline-block;padding:1.5mm 3mm;border-radius:2mm;color:white;font-size:7.5pt;font-weight:700}
+.status-select{border:none;background:transparent;font-size:8pt;font-family:inherit;cursor:pointer;width:100%}
+.photo-thumb{width:60px;height:45px;object-fit:cover;border-radius:2mm;cursor:pointer;display:block;border:1px solid #ddd}
+.del-row-btn{background:none;border:none;cursor:pointer;color:#ccc;font-size:11pt;padding:0;line-height:1}
+.del-row-btn:hover{color:#C62828}
+.add-row-btn{display:block;width:100%;padding:3mm;border:1.5px dashed #bbb;border-radius:2mm;
+  background:none;font-size:9pt;color:#888;cursor:pointer;margin-top:3mm;font-family:inherit}
+.add-row-btn:hover{border-color:#1a1a2e;color:#1a1a2e}
+
+/* ── CONCLUSION ── */
+.conclusion{border:1px solid #bbb;padding:4mm 6mm;font-size:10pt;line-height:1.6;
+  margin-bottom:6mm;border-radius:2mm;background:#FAFAFA}
+
+/* ── RECOMMENDATIONS ── */
+.rec-table{width:100%;border-collapse:collapse;font-size:9.5pt;margin-bottom:6mm}
+.rec-table td{padding:2.5mm 3mm;border-bottom:1px solid #eee;vertical-align:top}
+.rec-table tr:last-child td{border-bottom:none}
+
+/* ── SIGNATURES ── */
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:20mm;margin-top:8mm}
+.sign-box{border-top:1px solid #000;padding-top:2.5mm}
+.sign-role{font-size:8.5pt;color:#555;text-transform:uppercase;letter-spacing:0.05em}
+.sign-name{font-size:10pt;margin-top:1.5mm}
+.sign-date{font-size:9pt;color:#555;margin-top:1mm}
+
+/* ── FOOTER ── */
+.doc-footer{margin-top:8mm;padding-top:3mm;border-top:1px solid #ccc;
+  font-size:8pt;color:#888;text-align:center;line-height:1.6}
+
+/* ── PHOTO VIEWER ── */
+.photo-viewer{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999;
+  align-items:center;justify-content:center;flex-direction:column}
+.photo-viewer.open{display:flex}
+.photo-viewer img{max-width:90vw;max-height:85vh;object-fit:contain;border-radius:4mm}
+.photo-viewer-close{position:absolute;top:16px;right:20px;color:white;font-size:28px;
+  cursor:pointer;font-weight:300;line-height:1;background:none;border:none}
+
+/* ══ PRINT ══════════════════════════════════════════════ */
+@media print{
+  @page{size:A4 portrait;margin:20mm 15mm 20mm 20mm}
+  .toolbar{display:none!important}
+  .del-row-btn{display:none!important}
+  .add-row-btn{display:none!important}
+  .status-select{-webkit-appearance:none;appearance:none;pointer-events:none}
+  body{background:white;font-size:10pt}
+  .page-wrap{max-width:100%}
+  .page{padding:0}
+  .act-table-wrap{overflow:visible}
+  .act-table{font-size:7.5pt}
+  .act-table td,.act-table th{padding:1.5mm 1.5mm}
+  tr{page-break-inside:avoid}
+  .sec-title{page-break-after:avoid}
+  .sign-grid{page-break-inside:avoid}
+  td[contenteditable]{background:none!important;box-shadow:none!important}
+}
+@media(max-width:600px){
+  .sum-grid{grid-template-columns:repeat(4,1fr)}
+  .sign-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button class="tb-btn tb-primary" onclick="window.print()">💾 PDF</button>
+  <button class="tb-btn tb-secondary" onclick="exportCSV()">📊 CSV</button>
+  <button class="tb-btn tb-secondary" onclick="doShare()">📤 Поделиться</button>
+  <button class="tb-btn tb-secondary" onclick="addRow()">+ Строка</button>
+  <div class="tb-spacer"></div>
+  <span class="tb-id">${actNum}</span>
+</div>
+
+<div id="photo-viewer" class="photo-viewer" onclick="closePhoto()">
+  <button class="photo-viewer-close" onclick="closePhoto()">×</button>
+  <img id="photo-viewer-img" src="" alt="">
+</div>
+
+<div class="page-wrap"><div class="page">
+
+<!-- ШАПКА -->
+<div class="doc-header">
+  <div class="brand">HOUSEMASTER · СИСТЕМА ОСИ РЕСПУБЛИКИ КАЗАХСТАН</div>
+  <div class="doc-title">Акт технического обследования<br>общего имущества многоквартирного жилого дома</div>
+  <div class="doc-subtitle">Housemaster Standard Act v1.0</div>
+  <div class="doc-actnum">№ ${actNum}</div>
+</div>
+
+<!-- РЕКВИЗИТЫ -->
+<div class="sec-title">1. Реквизиты</div>
+<table class="req-table">
+  <tr><td>Адрес МКД:</td><td>${d.object}</td></tr>
+  <tr><td>Дата обследования:</td><td>${dateLong} (${dateShort})</td></tr>
+  <tr><td>Исполнитель обследования:</td><td>${d.inspector}</td></tr>
+  <tr><td>Председатель ОСИ:</td><td>${chairman||'—'}</td></tr>
+  <tr><td>Основание обследования:</td><td>${reason}</td></tr>
+  <tr><td>Номер акта:</td><td>${actNum}</td></tr>
+  <tr><td>Стандарт документа:</td><td>Housemaster Standard Act v1.0</td></tr>
+</table>
+
+<!-- СВОДНЫЕ ПОКАЗАТЕЛИ -->
+<div class="sec-title">2. Сводные показатели</div>
+<div class="sum-grid">
+  <div class="sum-box"><div class="sum-val">${totalAll}</div><div class="sum-lbl">Всего проверено</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:#2E7D32">${totalOk}</div><div class="sum-lbl">Соответствует</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:${totalIssues>0?'#E65100':'#333'}">${totalIssues}</div><div class="sum-lbl">Замечаний</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:${totalL3>0?'#C62828':'#333'}">${totalL3}</div><div class="sum-lbl">L3 Критичных</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:${totalL2>0?'#E65100':'#333'}">${totalL2}</div><div class="sum-lbl">L2 Срочных</div></div>
+  <div class="sum-box"><div class="sum-val" style="color:${totalL1>0?'#5C6BC0':'#333'}">${totalL1}</div><div class="sum-lbl">L1 Плановых</div></div>
+  <div class="sum-box"><div class="sum-val">${totalPhotos}</div><div class="sum-lbl">Фотофиксаций</div></div>
+</div>
+
+<!-- ОБСЛЕДОВАННЫЕ СИСТЕМЫ -->
+<div class="sec-title">3. Охват обследования</div>
+<table class="dom-table">
+  <tr><th>Система</th><th>Код</th><th>Источник</th><th>Пунктов</th><th>Результат</th><th>Статус</th></tr>
+  ${domainSummaryRows}
+</table>
+
+<!-- ОСНОВНАЯ ТАБЛИЦА -->
+<div class="sec-title">4. Ведомость технического обследования</div>
+<div class="act-table-wrap">
+<table class="act-table" id="act-table">
+  <colgroup>
+    <col style="width:28px">
+    <col style="width:62px">
+    <col style="width:80px">
+    <col style="width:80px">
+    <col style="width:160px">
+    <col style="width:68px">
+    <col style="width:28px">
+    <col style="width:120px">
+    <col style="width:50px">
+    <col style="width:110px">
+    <col style="width:60px">
+    <col style="width:70px">
+    <col style="width:70px">
+    <col style="width:22px">
+  </colgroup>
+  <thead><tr>
+    <th>№</th>
+    <th>Домен</th>
+    <th>Код класси­фи­като­ра</th>
+    <th>Источник (Том / Раздел)</th>
+    <th>Наименование элемента</th>
+    <th>Статус</th>
+    <th>Sev.</th>
+    <th>Описание замечания</th>
+    <th>Фото</th>
+    <th>Рекомендация</th>
+    <th>Срок устра­нения</th>
+    <th>Ответствен­ный</th>
+    <th>Статус испол­нения</th>
+    <th></th>
+  </tr></thead>
+  <tbody id="act-tbody"></tbody>
+</table>
+</div>
+<button class="add-row-btn" onclick="addRow()">+ Добавить строку вручную</button>
+
+<!-- ЗАКЛЮЧЕНИЕ -->
+<div class="sec-title">5. Заключение</div>
+<div class="conclusion">${conclusion}</div>
+
+<!-- РЕКОМЕНДАЦИИ -->
+<div class="sec-title">6. Рекомендации по устранению</div>
+<table class="rec-table">
+  <tr>
+    <td style="width:60px"><span class="sev-badge" style="background:#C62828">L3</span></td>
+    <td><strong>Немедленное устранение</strong> — не позднее 1–2 часов с момента выявления. Уведомить председателя ОСИ и аварийную службу. Обеспечить безопасность жителей.</td>
+  </tr>
+  <tr>
+    <td><span class="sev-badge" style="background:#E65100">L2</span></td>
+    <td><strong>Срочное устранение</strong> — в течение 24 часов. Зафиксировать в журнале дефектов. Привлечь сервисную организацию или подрядчика.</td>
+  </tr>
+  <tr>
+    <td><span class="sev-badge" style="background:#2E7D32">L1</span></td>
+    <td><strong>Плановое устранение</strong> — в течение 5–10 рабочих дней. Включить в план планово-предупредительного ремонта (ППР).</td>
+  </tr>
+</table>
+
+<!-- ПОДПИСИ -->
+<div class="sec-title">7. Подписи сторон</div>
+<div class="sign-grid">
+  <div class="sign-box">
+    <div class="sign-role">Исполнитель обследования</div>
+    <div class="sign-name">${d.inspector||'__________________________'}</div>
+    <div class="sign-date">Дата: ${dateShort}</div>
+  </div>
+  <div class="sign-box">
+    <div class="sign-role">Председатель ОСИ</div>
+    <div class="sign-name">${chairman||'__________________________'}</div>
+    <div class="sign-date">Дата: ________________</div>
+  </div>
+</div>
+
+<div class="doc-footer">
+  Акт сформирован системой HOUSEMASTER · Система ОСИ Республики Казахстан · ${actNum} · ${d.date}<br>
+  Housemaster Standard Act v1.0 · Не является юридически утверждённой государственной формой
+</div>
+
+</div></div><!-- /page /page-wrap -->
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────
+const ACT_ROWS = ${rowsJSON};
+const PHOTOS = ${photosJSON};
+const SEV_COLORS = {'L3':'#C62828','L2':'#E65100','L1':'#2E7D32','—':'#9E9E9E'};
+const DOM_COLORS = {'roof':'#2C5282','base':'#744210','heat':'#C05621','watr':'#2B6CB0','elec':'#553C9A'};
+
+let rows = ACT_ROWS.map((r,i)=>({
+  ...r, photo: PHOTOS[i]||null,
+  comment: r.status==='Соответствует'?'—':'',
+  deadline: r.deadline||'', responsible: r.responsible||'',
+  execStatus: r.execStatus||'Открыто'
+}));
+let nextNum = rows.length + 1;
+
+// ── RENDER TABLE ──────────────────────────────────────────────────────
+function renderTable(){
+  const tbody = document.getElementById('act-tbody');
+  const domColors = {'roof':'#2C5282','base':'#744210','heat':'#C05621','watr':'#2B6CB0','elec':'#553C9A'};
+  tbody.innerHTML = rows.map((r,i)=>{
+    const isBad = r.status==='Замечание';
+    const sColor = SEV_COLORS[r.sevLvl]||'#9E9E9E';
+    const dColor = domColors[r.domKey]||'#333';
+    const photoCell = r.photo
+      ? '<img class="photo-thumb" src="'+r.photo+'" onclick="viewPhoto('+i+')" title="Нажмите для просмотра">'
+      : '<span style="color:#ccc;font-size:8pt">Нет</span>';
+    const statusOpts = ['Соответствует','Замечание','Не применимо','Под наблюдением']
+      .map(o=>'<option'+(o===r.status?' selected':'')+'>'+o+'</option>').join('');
+    const execOpts = ['Открыто','В работе','Устранено','Не применимо']
+      .map(o=>'<option'+(o===r.execStatus?' selected':'')+'>'+o+'</option>').join('');
+    return '<tr class="'+(isBad?'issue-row':'ok-row')+'" data-idx="'+i+'">'
+      +'<td style="text-align:center;color:#888;font-size:8pt">'+(i+1)+'</td>'
+      +'<td><span class="dom-badge" style="background:'+dColor+';font-size:7pt">'+r.domRu+'</span><div style="font-size:7pt;color:#888;margin-top:1.5mm">('+r.domLabel+')</div></td>'
+      +'<td style="font-size:8pt;font-weight:700;color:#1a1a2e">'+r.code+'</td>'
+      +'<td style="font-size:8pt;color:#555">'+r.source+'</td>'
+      +'<td style="font-size:8.5pt">'+r.name+'</td>'
+      +'<td style="text-align:center"><select class="status-select" onchange="setField('+i+',\'status\',this.value);renderTable()">'+statusOpts+'</select></td>'
+      +'<td style="text-align:center"><span class="sev-badge" style="background:'+sColor+';font-size:7pt">'+r.sevLvl+'</span></td>'
+      +'<td contenteditable="true" onblur="setField('+i+',\'comment\',this.innerText)" style="color:'+( r.status==='Соответствует'?'#888':'#C62828')+'">'+escHtml(r.comment||'—')+'</td>'
+      +'<td style="text-align:center">'+photoCell+'</td>'
+      +'<td style="font-size:8pt;color:#555">'+escHtml(r.rec||'—')+'</td>'
+      +'<td contenteditable="true" onblur="setField('+i+',\'deadline\',this.innerText)" style="color:#555">'+escHtml(r.deadline||'—')+'</td>'
+      +'<td contenteditable="true" onblur="setField('+i+',\'responsible\',this.innerText)" style="color:#555">'+escHtml(r.responsible||'—')+'</td>'
+      +'<td><select class="status-select" onchange="setField('+i+',\'execStatus\',this.value)">'+execOpts+'</select></td>'
+      +'<td style="text-align:center"><button class="del-row-btn" onclick="deleteRow('+i+')" title="Удалить строку">×</button></td>'
+      +'</tr>';
+  }).join('');
+}
+
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function setField(i,f,v){ rows[i][f]=v; }
+function deleteRow(i){ rows.splice(i,1); renderTable(); }
+function addRow(){
+  rows.push({domKey:'',domRu:'',domLabel:'',domColor:'#555',code:'',source:'',
+    name:'',status:'Замечание',sevLvl:'—',photo:null,
+    comment:'',rec:'',deadline:'',responsible:'',execStatus:'Открыто'});
+  renderTable();
+  document.getElementById('act-tbody').lastElementChild?.scrollIntoView({behavior:'smooth'});
+}
+function viewPhoto(i){
+  const img = document.getElementById('photo-viewer-img');
+  img.src = rows[i].photo||'';
+  document.getElementById('photo-viewer').classList.add('open');
+}
+function closePhoto(){
+  document.getElementById('photo-viewer').classList.remove('open');
+}
+
+// ── CSV EXPORT ────────────────────────────────────────────────────────
+function exportCSV(){
+  const cols=['№','Домен','Код классификатора','Источник','Наименование элемента',
+    'Статус','Severity','Описание замечания','Фото','Рекомендация',
+    'Срок устранения','Ответственный','Статус исполнения'];
+  const escape=v=>'"'+String(v||'').replace(/"/g,'""')+'"';
+  const csvRows=[cols.map(escape).join(',')];
+  document.querySelectorAll('#act-tbody tr').forEach((tr,i)=>{
+    const r=rows[i]; if(!r) return;
+    const tds=[...tr.querySelectorAll('td')];
+    const comment=tds[7]?.innerText||r.comment||'';
+    const deadline=tds[10]?.innerText||r.deadline||'';
+    const resp=tds[11]?.innerText||r.responsible||'';
+    const stat=tds[5]?.querySelector('select')?.value||r.status;
+    const exec=tds[12]?.querySelector('select')?.value||r.execStatus;
+    csvRows.push([
+      i+1, r.domRu, r.code, r.source, r.name,
+      stat, r.sevLvl, comment, r.photo?'Есть':'Нет',
+      r.rec, deadline, resp, exec
+    ].map(escape).join(','));
+  });
+  const bom='﻿';
+  const blob=new Blob([bom+csvRows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='${actNum}.csv';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+}
+
+// ── SHARE ─────────────────────────────────────────────────────────────
+function doShare(){
+  const totalIssues=rows.filter(r=>r.status==='Замечание').length;
+  const text='АКТ ТЕХНИЧЕСКОГО ОБСЛЕДОВАНИЯ МКД\\n'
+    +'№ ${actNum}\\n'
+    +'Объект: ${d.object}\\n'
+    +'Дата: ${dateLong}\\n'
+    +'Исполнитель: ${d.inspector}\\n'
+    +'Всего проверено: ${totalAll} / Замечаний: '+totalIssues;
+  if(navigator.share){
+    navigator.share({title:'${actNum}',text}).catch(()=>showShareFallback(text));
+  } else {
+    showShareFallback(text);
+  }
+}
+function showShareFallback(text){
+  const enc=encodeURIComponent(text);
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:flex-end;font-family:sans-serif';
+  el.innerHTML='<div style="width:100%;background:white;border-radius:14px 14px 0 0;padding:20px">'
+    +'<div style="font-weight:800;font-size:15px;margin-bottom:14px">Поделиться актом</div>'
+    +'<a href="https://wa.me/?text='+enc+'" target="_blank" style="display:block;padding:12px;background:#25D366;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:8px;text-align:center;font-size:14px">💬 WhatsApp</a>'
+    +'<a href="https://t.me/share/url?text='+enc+'" target="_blank" style="display:block;padding:12px;background:#2AABEE;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:8px;text-align:center;font-size:14px">✈️ Telegram</a>'
+    +'<a href="mailto:?subject=${actNum}&body='+enc+'" style="display:block;padding:12px;background:#1a1a2e;color:white;border-radius:10px;text-decoration:none;font-weight:700;margin-bottom:14px;text-align:center;font-size:14px">✉️ Email</a>'
+    +'<button onclick="this.closest(\'div[style]\').remove()" style="width:100%;padding:12px;border:2px solid #eee;border-radius:10px;background:white;font-size:14px;cursor:pointer">Закрыть</button></div>';
+  document.body.appendChild(el);
+  el.addEventListener('click',e=>{if(e.target===el)el.remove()});
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────
+renderTable();
+<\/script>
+</body>
+</html>`;
+}
+
 
 function buildStandardReport(reason, chairman, actNum){
   const d = getReportData();
